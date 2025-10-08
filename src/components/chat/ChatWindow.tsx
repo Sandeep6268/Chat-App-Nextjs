@@ -19,7 +19,6 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
-  const [isUserActiveInThisChat, setIsUserActiveInThisChat] = useState(false);
 
   // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
@@ -148,12 +147,11 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
             </h2>
             <p className="text-sm text-gray-600">Active now</p>
           </div>
-          {isUserActiveInThisChat && (
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-green-600 font-medium">Online</span>
-            </div>
-          )}
+          {/* Always show online indicator when user is in this chat */}
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span className="text-xs text-green-600 font-medium">Online</span>
+          </div>
         </div>
       </div>
 
