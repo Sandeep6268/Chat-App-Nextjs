@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { User, Message } from '@/types';
-import { sendMessage, getMessages, markMessagesAsRead } from '@/lib/firestore';
+import { sendMessage, getMessages, markAllMessagesAsRead } from '@/lib/firestore';
 import { collection, orderBy, query, onSnapshot } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 
@@ -55,7 +55,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
 
       // Mark messages as read
       if (user) {
-        markMessagesAsRead(chatId, user.uid);
+        markAllMessagesAsRead(chatId, user.uid);
       }
 
       // Auto-scroll only if user is near bottom
