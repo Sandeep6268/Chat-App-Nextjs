@@ -12,7 +12,7 @@ export const useNotifications = () => {
   const [isSupported, setIsSupported] = useState<boolean>(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
 
-  // Initialize FCM with detailed logging
+  // Initialize FCM with better error handling
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
@@ -28,48 +28,41 @@ export const useNotifications = () => {
           return;
         }
 
-        console.log('✅ [NOTIFICATIONS] FCM supported, checking permission...');
+        console.log('✅ [NOTIFICATIONS] FCM supported');
         setPermission(Notification.permission);
 
-        if (Notification.permission === 'granted') {
-          console.log('🔑 [NOTIFICATIONS] Permission granted, getting FCM token...');
-          const token = await getFCMToken();
-          if (token) {
-            setFcmToken(token);
-            console.log('✅ [NOTIFICATIONS] FCM token received:', token.substring(0, 20) + '...');
-            
-            // Store token in user's document
-            if (user) {
-              try {
-                const userRef = doc(firestore, 'users', user.uid);
-                await updateDoc(userRef, {
-                  fcmTokens: arrayUnion(token),
-                  notificationEnabled: true,
-                  lastFCMUpdate: new Date()
-                });
-                console.log('💾 [NOTIFICATIONS] FCM token stored in user document');
-              } catch (error) {
-                console.error('❌ [NOTIFICATIONS] Error storing FCM token:', error);
-              }
+        // Always try to get token, even if permission is not granted yet
+        console.log('🔑 [NOTIFICATIONS] Getting FCM token...');
+        const token = await getFCMToken();
+        
+        if (token) {
+          setFcmToken(token);
+          console.log('✅ [NOTIFICATIONS] FCM token received');
+          
+          // Store token in user's document
+          if (user) {
+            try {
+              const userRef = doc(firestore, 'users', user.uid);
+              await updateDoc(userRef, {
+                fcmTokens: arrayUnion(token),
+                notificationEnabled: true,
+                lastFCMUpdate: new Date()
+              });
+              console.log('💾 [NOTIFICATIONS] FCM token stored in user document');
+            } catch (error) {
+              console.error('❌ [NOTIFICATIONS] Error storing FCM token:', error);
             }
-          } else {
-            console.log('❌ [NOTIFICATIONS] Failed to get FCM token');
           }
         } else {
-          console.log('ℹ️ [NOTIFICATIONS] Notification permission:', Notification.permission);
+          console.log('❌ [NOTIFICATIONS] Failed to get FCM token - might need permission');
         }
 
-        // Set up foreground message listener with detailed logging
+        // Set up foreground message listener
         unsubscribe = await onForegroundMessage((payload) => {
-          console.log('📱 [NOTIFICATIONS] Foreground FCM message received:', {
-            notification: payload.notification,
-            data: payload.data,
-            from: payload.from,
-            messageId: payload.messageId
-          });
+          console.log('📱 [NOTIFICATIONS] Foreground FCM message received:', payload);
         });
 
-        console.log('🎉 [NOTIFICATIONS] FCM initialization completed successfully');
+        console.log('🎉 [NOTIFICATIONS] FCM initialization completed');
 
       } catch (error) {
         console.error('❌ [NOTIFICATIONS] Error initializing FCM:', error);
@@ -85,13 +78,13 @@ export const useNotifications = () => {
     };
   }, [user]);
 
-  // Request Permission with logging
+  // Request Permission with better handling
   const requestPermission = useCallback(async (): Promise<boolean> => {
     try {
       console.log('🔔 [NOTIFICATIONS] Requesting notification permission...');
       
       if (!('Notification' in window)) {
-        console.log('🚫 [NOTIFICATIONS] Notifications not supported in this browser');
+        console.log('🚫 [NOTIFICATIONS] Notifications not supported');
         return false;
       }
 
@@ -100,18 +93,20 @@ export const useNotifications = () => {
       console.log(`📋 [NOTIFICATIONS] Permission result: ${result}`);
       
       if (result === 'granted') {
-        console.log('✅ [NOTIFICATIONS] Permission granted, getting FCM token...');
+        console.log('✅ [NOTIFICATIONS] Permission granted');
+        
+        // Get new token after permission granted
         const token = await getFCMToken();
         if (token) {
           setFcmToken(token);
-          console.log('🎉 [NOTIFICATIONS] FCM token generated after permission');
+          console.log('🎉 [NOTIFICATIONS] New FCM token generated');
           return true;
         }
       }
       
       return result === 'granted';
     } catch (error) {
-      console.error('❌ [NOTIFICATIONS] Error requesting notification permission:', error);
+      console.error('❌ [NOTIFICATIONS] Error requesting permission:', error);
       return false;
     }
   }, []);
@@ -135,113 +130,116 @@ export const useNotifications = () => {
     }
   }, [user]);
 
-  // ✅ SEND PUSH NOTIFICATION TO USER - WITH DETAILED LOGGING
+  // ✅ IMPROVED: Send Push Notification with Fallback
   const sendPushNotification = useCallback(async (userId: string, title: string, body: string, data?: any) => {
     try {
-      console.log('🚀 [NOTIFICATIONS] Sending push notification:', {
-        toUserId: userId,
-        title,
-        body,
-        data
-      });
+      console.log('🚀 [NOTIFICATIONS] Sending push notification to user:', userId);
 
       // Get user's FCM token from Firestore
       const userRef = doc(firestore, 'users', userId);
       const userSnap = await getDoc(userRef);
       
       if (!userSnap.exists()) {
-        console.log('❌ [NOTIFICATIONS] User not found:', userId);
+        console.log('❌ [NOTIFICATIONS] User not found');
         return false;
       }
 
       const userData = userSnap.data();
       const userTokens = userData.fcmTokens || [];
 
-      console.log(`📋 [NOTIFICATIONS] User ${userId} has ${userTokens.length} FCM tokens`);
+      console.log(`📋 [NOTIFICATIONS] User has ${userTokens.length} FCM tokens`);
 
       if (userTokens.length === 0) {
-        console.log('❌ [NOTIFICATIONS] No FCM tokens found for user:', userId);
+        console.log('❌ [NOTIFICATIONS] No FCM tokens found for user');
         return false;
       }
 
-      // Log each token (first few characters for privacy)
-      userTokens.forEach((token: string, index: number) => {
-        console.log(`   Token ${index + 1}: ${token.substring(0, 20)}...`);
-      });
+      // Try to send to each token until one works
+      for (const token of userTokens) {
+        try {
+          console.log('📤 [NOTIFICATIONS] Sending to token:', token.substring(0, 20) + '...');
+          
+          const response = await fetch('/api/send-notification', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              token: token,
+              title: title.substring(0, 50), // Limit title length
+              body: body.substring(0, 150), // Limit body length
+              data: {
+                ...data,
+                type: 'chat_message',
+                timestamp: new Date().toISOString()
+              }
+            }),
+          });
 
-      // Send to all tokens (handle multiple devices)
-      const response = await fetch('/api/send-notification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token: userTokens[0], // Send to first token for now
-          title,
-          body,
-          data: {
-            ...data,
-            chatId: data?.chatId,
-            senderId: data?.senderId,
-            type: 'chat_message',
-            timestamp: new Date().toISOString()
+          const result = await response.json();
+          
+          if (response.ok && result.success) {
+            console.log('✅ [NOTIFICATIONS] Push notification sent successfully!');
+            return true;
+          } else {
+            console.log('❌ [NOTIFICATIONS] Token failed, trying next...', result.error);
+            continue; // Try next token
           }
-        }),
-      });
-
-      console.log('📩 [NOTIFICATIONS] API Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ [NOTIFICATIONS] API Error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        });
-        throw new Error(`HTTP error! status: ${response.status}`);
+        } catch (error) {
+          console.log('❌ [NOTIFICATIONS] Error with token, trying next...', error);
+          continue;
+        }
       }
 
-      const result = await response.json();
-      console.log('✅ [NOTIFICATIONS] Push notification API response:', result);
-      
-      if (result.success) {
-        console.log('🎉 [NOTIFICATIONS] Push notification sent successfully!');
-        console.log('   📱 Message ID:', result.messageId);
-        console.log('   👤 To User:', userId);
-        console.log('   💬 Title:', title);
-        console.log('   📝 Body:', body);
-      } else {
-        console.error('❌ [NOTIFICATIONS] API returned success: false', result);
-      }
-      
-      return result.success;
+      console.log('❌ [NOTIFICATIONS] All tokens failed');
+      return false;
 
     } catch (error) {
-      console.error('❌ [NOTIFICATIONS] Error sending push notification to user:', {
-        userId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
-      });
+      console.error('❌ [NOTIFICATIONS] Error sending push notification:', error);
       return false;
     }
   }, []);
 
-  // ✅ TEST PUSH NOTIFICATION - WITH DETAILED LOGGING
+  // ✅ FIXED: Test Push Notification - ALWAYS shows browser notification
   const testPushNotification = useCallback(async (title: string, body: string) => {
-    // Get current token from localStorage
-    let currentToken = localStorage.getItem('fcmToken');
-    
-    console.log('🧪 [NOTIFICATIONS] Starting test push notification...');
-    console.log('   📱 Current FCM Token:', currentToken ? currentToken.substring(0, 30) + '...' : 'NOT FOUND');
+    console.log('🧪 [NOTIFICATIONS] Starting test notification...');
 
+    // First, always try to show browser notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      console.log('📱 [NOTIFICATIONS] Showing browser notification...');
+      
+      const notification = new Notification(
+        title || 'Test Notification 🔔',
+        {
+          body: body || 'This is a test browser notification!',
+          icon: '/icon-192.png',
+          badge: '/badge.png',
+          tag: `test-${Date.now()}`, // Unique tag for each notification
+          requireInteraction: true,
+        }
+      );
+
+      notification.onclick = () => {
+        console.log('✅ [NOTIFICATIONS] Test notification clicked');
+        notification.close();
+      };
+
+      console.log('✅ [NOTIFICATIONS] Browser notification shown');
+    } else {
+      console.log('❌ [NOTIFICATIONS] Cannot show browser notification - permission not granted');
+    }
+
+    // Then try to send FCM push notification
+    const currentToken = localStorage.getItem('fcmToken');
+    
     if (!currentToken) {
-      console.log('❌ [NOTIFICATIONS] No FCM token available for test');
-      alert('No FCM token available. Please enable notifications first.');
+      console.log('❌ [NOTIFICATIONS] No FCM token available');
+      alert('Browser notification shown! But no FCM token available for push.');
       return false;
     }
 
     try {
-      console.log('📤 [NOTIFICATIONS] Sending test notification to API...');
+      console.log('📤 [NOTIFICATIONS] Sending FCM test notification...');
       
       const response = await fetch('/api/send-notification', {
         method: 'POST',
@@ -250,8 +248,8 @@ export const useNotifications = () => {
         },
         body: JSON.stringify({
           token: currentToken,
-          title: title || 'Test Push Notification',
-          body: body || 'This is a test push notification from your chat app! 🎉',
+          title: title || 'Test Push Notification 🔔',
+          body: body || 'This is a test push notification! Check if this arrives on your device.',
           data: {
             type: 'test',
             timestamp: new Date().toISOString(),
@@ -260,54 +258,47 @@ export const useNotifications = () => {
         }),
       });
 
-      console.log('📩 [NOTIFICATIONS] Test API Response status:', response.status);
-
       const result = await response.json();
-      console.log('📄 [NOTIFICATIONS] Test API Response:', result);
+      console.log('📄 [NOTIFICATIONS] FCM Response:', result);
     
-      if (!response.ok) {
-        console.error('❌ [NOTIFICATIONS] Test API Error:', result);
-        
-        // If token is invalid, try to refresh it
-        if (result.code === 'messaging/invalid-argument' || 
-            result.code === 'messaging/invalid-registration-token') {
-          
-          console.log('🔄 [NOTIFICATIONS] Token invalid, attempting to refresh...');
-          localStorage.removeItem('fcmToken');
-          const newToken = await getFCMToken();
-          
-          if (newToken) {
-            console.log('✅ [NOTIFICATIONS] New token generated');
-            alert('Token was expired. New token generated. Please try again.');
-          } else {
-            alert('Token expired and failed to generate new one. Please refresh the page and enable notifications again.');
-          }
-          return false;
-        }
-        
-        alert(`Error: ${result.error}\n\nCode: ${result.code}`);
-        return false;
-      }
-
-      if (result.success) {
-        console.log('🎉 [NOTIFICATIONS] Test push notification sent successfully!');
-        console.log('   📱 Message ID:', result.messageId);
-        alert('✅ Test notification sent! Check your device for push notification and browser console for logs.');
+      if (response.ok && result.success) {
+        console.log('🎉 [NOTIFICATIONS] FCM test notification sent!');
+        alert('✅ Both browser and FCM notifications sent! Check your device.');
         return true;
       } else {
-        console.error('❌ [NOTIFICATIONS] Test failed - API returned success: false', result);
-        alert(`Error: ${result.error}`);
+        console.error('❌ [NOTIFICATIONS] FCM test failed:', result.error);
+        alert(`Browser notification shown! But FCM failed: ${result.error}`);
         return false;
       }
 
     } catch (error: any) {
-      console.error('❌ [NOTIFICATIONS] Network error in test:', {
-        error: error.message,
-        stack: error.stack
-      });
-      alert(`Network Error: ${error.message}\n\nCheck browser console for detailed logs.`);
+      console.error('❌ [NOTIFICATIONS] FCM network error:', error);
+      alert('Browser notification shown! But FCM network error occurred.');
       return false;
     }
+  }, []);
+
+  // ✅ NEW: Simple Browser Notification (for unread counts, etc.)
+  const showBrowserNotification = useCallback((title: string, body: string, tag?: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      console.log('📱 [NOTIFICATIONS] Showing browser notification:', { title, body });
+      
+      const notification = new Notification(title, {
+        body: body,
+        icon: '/icon-192.png',
+        badge: '/badge.png',
+        tag: tag || `notification-${Date.now()}`,
+        requireInteraction: false,
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+
+      return true;
+    }
+    return false;
   }, []);
 
   return {
@@ -317,6 +308,7 @@ export const useNotifications = () => {
     requestPermission,
     disableNotifications,
     sendPushNotification,
-    testPushNotification
+    testPushNotification,
+    showBrowserNotification // Add this new function
   };
 };
