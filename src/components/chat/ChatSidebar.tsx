@@ -3,11 +3,12 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
-import { getUserChats, markAllMessagesAsRead, createChat } from '@/lib/firestore';
+import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -23,7 +24,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const [totalUnread, setTotalUnread] = useState<number>(0);
   const [usersWithoutChats, setUsersWithoutChats] = useState<User[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
-  const [activeSection, setActiveSection] = useState<'chats' | 'contacts'>('chats');
 
   // Get current chat ID from URL
   const currentChatId = pathname?.split('/chat/')[1];
@@ -116,6 +116,8 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     try {
       setLoading(true);
       
+      const { createChat } = await import('@/lib/firestore');
+      
       // Create one-to-one chat
       const chatRef = await createChat([user.uid, otherUserId]);
       
@@ -167,48 +169,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 
-  // Handle direct contact click - create or open chat with user
-  const handleContactClick = async (otherUser: User) => {
-    if (!user) return;
-
-    try {
-      setLoading(true);
-      
-      // Check if chat already exists with this user
-      const existingChat = existingChats.find(chat => {
-        const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
-        return otherParticipants.includes(otherUser.uid);
-      });
-
-      if (existingChat) {
-        // If chat exists, navigate to it
-        console.log('✅ Existing chat found:', existingChat.id);
-        router.push(`/chat/${existingChat.id}`);
-        
-        // Mark messages as read if any unread
-        if (existingChat.unreadCount && existingChat.unreadCount > 0) {
-          await markAllMessagesAsRead(existingChat.id, user.uid);
-        }
-      } else {
-        // If no chat exists, create new one
-        console.log('🆕 Creating new chat with user:', otherUser.uid);
-        const chatRef = await createChat([user.uid, otherUser.uid]);
-        router.push(`/chat/${chatRef.id}`);
-      }
-      
-      // Close sidebar on mobile
-      if (onSelectChat) {
-        onSelectChat();
-      }
-      
-    } catch (error) {
-      console.error('Error handling contact click:', error);
-      alert('Error starting chat. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Get other user's info from chat (one-to-one only)
   const getOtherUserInfo = (chat: Chat) => {
     if (!user) return { name: 'Unknown User', email: '', photoURL: null };
@@ -230,8 +190,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     return {
       name: otherUser.displayName || otherUser.email || 'Unknown User',
       email: otherUser.email || '',
-      photoURL: otherUser.photoURL,
-      isOnline: otherUser.isOnline
+      photoURL: otherUser.photoURL
     };
   };
 
@@ -255,105 +214,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
       return '';
     }
   };
-
-  // Contacts List Component
-  const ContactsList = () => (
-    <div className="flex-1 overflow-y-auto p-2">
-      {availableUsers.length === 0 ? (
-        <div className="flex items-center justify-center h-32">
-          <p className="text-gray-500 text-sm">No contacts found</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {availableUsers.map((contactUser) => {
-            const existingChat = existingChats.find(chat => {
-              const otherParticipants = chat.participants?.filter(pid => pid !== user?.uid) || [];
-              return otherParticipants.includes(contactUser.uid);
-            });
-            
-            const hasUnread = existingChat?.unreadCount && existingChat.unreadCount > 0;
-            
-            return (
-              <button
-                key={contactUser.uid}
-                onClick={() => handleContactClick(contactUser)}
-                disabled={loading}
-                className={`w-full flex items-center p-3 rounded-lg transition-all border cursor-pointer ${
-                  hasUnread 
-                    ? 'bg-orange-50 border-orange-200 hover:bg-orange-100' 
-                    : 'bg-white border-gray-100 hover:bg-gray-50'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <div className="flex items-center space-x-3 flex-1">
-                  {/* User Avatar */}
-                  <div className="relative flex-shrink-0">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold ${
-                      contactUser.isOnline ? 'bg-green-500' : 'bg-gray-400'
-                    }`}>
-                      {contactUser.photoURL ? (
-                        <img 
-                          src={contactUser.photoURL} 
-                          alt={contactUser.displayName || 'User'}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        contactUser.displayName?.[0]?.toUpperCase() || contactUser.email?.[0]?.toUpperCase() || 'U'
-                      )}
-                    </div>
-                    {/* Online Status Indicator */}
-                    {contactUser.isOnline && (
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-                    )}
-                    {/* Unread Indicator for existing chats */}
-                    {hasUnread && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">
-                          {existingChat?.unreadCount && existingChat.unreadCount > 9 ? '9+' : existingChat?.unreadCount}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* User Info */}
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="flex justify-between items-start">
-                      <p className={`font-semibold text-sm truncate ${
-                        hasUnread ? 'text-gray-900' : 'text-gray-700'
-                      }`}>
-                        {contactUser.displayName || 'Unknown User'}
-                      </p>
-                      {contactUser.isOnline && (
-                        <span className="text-xs text-green-600 whitespace-nowrap ml-2">
-                          Online
-                        </span>
-                      )}
-                    </div>
-                    
-                    <p className="text-xs text-gray-500 truncate mt-1">
-                      {contactUser.email}
-                    </p>
-                    
-                    <p className={`text-sm truncate mt-1 ${
-                      hasUnread ? 'text-green-600 font-medium' : 'text-gray-600'
-                    }`}>
-                      {existingChat ? 'Click to open chat' : 'Click to start chat'}
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Chat Icon */}
-                <div className="text-blue-500 transform transition-transform hover:scale-110 p-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 
   // New Chat Modal Component
   const NewChatModal = () => {
@@ -458,7 +318,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     );
   };
 
-  
   if (loading) {
     return (
       <div className="w-80 bg-white border-r border-gray-200 h-full flex flex-col">
@@ -481,20 +340,18 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   return (
     <>
       <div className="w-80 bg-white border-r border-gray-200 h-full flex flex-col">
-        {/* Header with Tabs */}
+        {/* Header */}
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center">
             <div>
               <h2 className="text-xl font-semibold text-gray-800">Messages</h2>
               <p className="text-sm text-gray-600 mt-1">
-                {activeSection === 'chats' 
-                  ? `${existingChats.length} conversations${totalUnread > 0 ? ` • ${totalUnread} unread` : ''}`
-                  : `${availableUsers.length} contacts`
-                }
+                {existingChats.length} conversations
+                {totalUnread > 0 && ` • ${totalUnread} unread`}
               </p>
             </div>
             <div className="flex items-center space-x-2">
-              {totalUnread > 0 && activeSection === 'chats' && (
+              {totalUnread > 0 && (
                 <span className="bg-red-500 text-white text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5 font-medium">
                   {totalUnread > 99 ? '99+' : totalUnread}
                 </span>
@@ -511,138 +368,116 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
               </button>
             </div>
           </div>
-
-          {/* Tabs */}
-          <div className="flex space-x-1 bg-white rounded-lg p-1 border border-gray-200">
-            <button
-              onClick={() => setActiveSection('chats')}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                activeSection === 'chats'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              Chats
-            </button>
-            <button
-              onClick={() => setActiveSection('contacts')}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                activeSection === 'contacts'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              Contacts
-            </button>
-          </div>
         </div>
 
-        {/* Content Area */}
-        {activeSection === 'chats' ? (
-          /* Chats List */
-          <div className="flex-1 overflow-y-auto">
-            {existingChats.length > 0 ? (
-              <div className="p-2">
-                {existingChats.map((chat) => {
-                  const unreadCount = chat.unreadCount || 0;
-                  const hasUnread = unreadCount > 0;
-                  const isActiveChat = chat.id === currentChatId;
-                  const otherUserInfo = getOtherUserInfo(chat);
-                  
-                  return (
-                    <div
-                      key={chat.id}
-                      className={`block p-3 rounded-lg mb-1 transition-all border cursor-pointer ${
-                        isActiveChat 
-                          ? 'bg-blue-50 border-blue-200 shadow-sm' 
-                          : hasUnread 
-                            ? 'bg-orange-50 border-orange-200 hover:bg-orange-100' 
-                            : 'bg-white border-gray-100 hover:bg-gray-50'
-                      }`}
-                      onClick={(e) => handleChatClick(chat.id, hasUnread, e)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        {/* User Avatar */}
-                        <div className="relative flex-shrink-0">
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold ${
-                            hasUnread ? 'bg-green-500' : 
-                            isActiveChat ? 'bg-blue-500' : 'bg-gray-400'
-                          }`}>
-                            {otherUserInfo.photoURL ? (
-                              <img 
-                                src={otherUserInfo.photoURL} 
-                                alt={otherUserInfo.name}
-                                className="w-12 h-12 rounded-full object-cover"
-                              />
-                            ) : (
-                              otherUserInfo.name[0]?.toUpperCase() || 'U'
-                            )}
+        {/* Chats List */}
+        <div className="flex-1 overflow-y-auto">
+          {existingChats.length > 0 ? (
+            <div className="p-2">
+              {existingChats.map((chat) => {
+                const unreadCount = chat.unreadCount || 0;
+                const hasUnread = unreadCount > 0;
+                const isActiveChat = chat.id === currentChatId;
+                const otherUserInfo = getOtherUserInfo(chat);
+                
+                return (
+                  <div
+                    key={chat.id}
+                    className={`block p-3 rounded-lg mb-1 transition-all border cursor-pointer ${
+                      isActiveChat 
+                        ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                        : hasUnread 
+                          ? 'bg-orange-50 border-orange-200 hover:bg-orange-100' 
+                          : 'bg-white border-gray-100 hover:bg-gray-50'
+                    }`}
+                    onClick={(e) => handleChatClick(chat.id, hasUnread, e)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      {/* User Avatar */}
+                      <div className="relative flex-shrink-0">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold ${
+                          hasUnread ? 'bg-green-500' : 
+                          isActiveChat ? 'bg-blue-500' : 'bg-gray-400'
+                        }`}>
+                          {otherUserInfo.photoURL ? (
+                            <img 
+                              src={otherUserInfo.photoURL} 
+                              alt={otherUserInfo.name}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            otherUserInfo.name[0]?.toUpperCase() || 'U'
+                          )}
+                        </div>
+                        {/* Unread Indicator */}
+                        {hasUnread && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">
+                              {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
                           </div>
-                          {/* Unread Indicator */}
-                          {hasUnread && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">
-                                {unreadCount > 9 ? '9+' : unreadCount}
-                              </span>
-                            </div>
+                        )}
+                      </div>
+                      
+                      {/* Chat Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start">
+                          <p className={`font-semibold text-sm truncate ${
+                            hasUnread ? 'text-gray-900' : 'text-gray-700'
+                          }`}>
+                            {otherUserInfo.name}
+                          </p>
+                          {chat.lastMessageTimestamp && (
+                            <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
+                              {formatLastMessageTime(chat.lastMessageTimestamp)}
+                            </span>
                           )}
                         </div>
                         
-                        {/* Chat Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start">
-                            <p className={`font-semibold text-sm truncate ${
-                              hasUnread ? 'text-gray-900' : 'text-gray-700'
-                            }`}>
-                              {otherUserInfo.name}
-                            </p>
-                            {chat.lastMessageTimestamp && (
-                              <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-                                {formatLastMessageTime(chat.lastMessageTimestamp)}
-                              </span>
-                            )}
-                          </div>
-                          
-                          <p className="text-xs text-gray-500 truncate mt-1">
-                            {otherUserInfo.email}
-                          </p>
-                          
-                          <p className={`text-sm truncate mt-1 ${
-                            hasUnread ? 'text-green-600 font-medium' : 'text-gray-600'
-                          }`}>
-                            {chat.lastMessage || 'Start a conversation...'}
-                          </p>
-                        </div>
+                        <p className="text-xs text-gray-500 truncate mt-1">
+                          {otherUserInfo.email}
+                        </p>
+                        
+                        <p className={`text-sm truncate mt-1 ${
+                          hasUnread ? 'text-green-600 font-medium' : 'text-gray-600'
+                        }`}>
+                          {chat.lastMessage || 'Start a conversation...'}
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center p-8">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No conversations yet</h3>
-                  <p className="text-gray-500 text-sm mb-4">Start your first chat</p>
-                  
-                  <button
-                    onClick={() => setActiveSection('contacts')}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-                  >
-                    Browse Contacts
-                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
                 </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No conversations yet</h3>
+                <p className="text-gray-500 text-sm mb-4">Start your first chat</p>
+                
+                {/* Big Plus Button when no chats */}
+                <button
+                  onClick={() => setShowNewChatModal(true)}
+                  className="w-12 h-12 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-colors shadow-md hover:shadow-lg mx-auto mb-3"
+                  title="Start New Chat"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+                
+                <p className="text-xs text-gray-400">
+                  {usersWithoutChats.length} users available to chat with
+                </p>
               </div>
-            )}
-          </div>
-        ) : (
-          /* Contacts List */
-          <ContactsList />
-        )}
+            </div>
+          )}
+        </div>
 
         {/* Current User Info */}
         <div className="p-3 border-t border-gray-200 bg-gray-50">
@@ -670,7 +505,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         </div>
       </div>
 
-      {/* New Chat Modal (keep the existing modal) */}
+      {/* New Chat Modal */}
       <NewChatModal />
     </>
   );
