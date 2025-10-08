@@ -139,14 +139,18 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 
-  // Handle chat click - mark messages as read ONLY when user actually clicks on the chat
+  // Handle chat click - mark messages as read when user clicks on chat
   const handleChatClick = async (chatId: string, hasUnread: boolean) => {
-    // Only mark as read if user is actually viewing this chat (not just hovering)
-    if (hasUnread && user && chatId === currentChatId) {
+    console.log('🔄 Chat clicked:', chatId, 'Has unread:', hasUnread);
+    
+    // Mark messages as read when user clicks on any chat (not just current one)
+    if (hasUnread && user) {
       try {
+        console.log('📨 Marking messages as read for chat:', chatId);
         await markAllMessagesAsRead(chatId, user.uid);
+        console.log('✅ Messages marked as read successfully');
       } catch (error) {
-        console.error('Error marking messages as read:', error);
+        console.error('❌ Error marking messages as read:', error);
       }
     }
     

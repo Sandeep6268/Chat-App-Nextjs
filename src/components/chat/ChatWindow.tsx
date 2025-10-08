@@ -1,9 +1,8 @@
-// --- path: /src/components/chat/ChatWindow.tsx ---
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { getMessages, sendMessage } from '@/lib/firestore';
+import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 
 interface ChatWindowProps {
@@ -18,21 +17,10 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const [isUserActiveInThisChat, setIsUserActiveInThisChat] = useState(false);
+  const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
 
   // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
-
-  // Set user as active in this chat when component mounts
-  useEffect(() => {
-    if (chatId && user) {
-      setIsUserActiveInThisChat(true);
-    }
-
-    return () => {
-      setIsUserActiveInThisChat(false);
-    };
-  }, [chatId, user]);
 
   // Fetch messages in real-time
   useEffect(() => {
@@ -40,10 +28,31 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
 
     const unsubscribe = getMessages(chatId, (messages) => {
       setMessages(messages);
+      
+      // Mark messages as read when user first opens the chat
+      if (messages.length > 0 && !hasMarkedInitialRead) {
+        const unreadMessages = messages.filter(msg => 
+          !msg.readBy?.includes(user.uid) && msg.senderId !== user.uid
+        );
+        
+        if (unreadMessages.length > 0) {
+          console.log('🎯 First time opening chat, marking messages as read');
+          markAllMessagesAsRead(chatId, user.uid)
+            .then(() => {
+              setHasMarkedInitialRead(true);
+            })
+            .catch(console.error);
+        } else {
+          setHasMarkedInitialRead(true);
+        }
+      }
     });
 
-    return unsubscribe;
-  }, [chatId, user]);
+    return () => {
+      unsubscribe();
+      setHasMarkedInitialRead(false); // Reset when switching chats
+    };
+  }, [chatId, user, hasMarkedInitialRead]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
