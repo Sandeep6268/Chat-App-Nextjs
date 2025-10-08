@@ -1,9 +1,12 @@
-// app/api/send-notification/route.ts - UPDATED SIMPLIFIED
+// app/api/send-notification/route.ts - UPDATED
 import { NextRequest, NextResponse } from 'next/server';
 
+// Simple in-memory cache for access tokens
 let accessTokenCache: { token: string; expiry: number } | null = null;
 
+// ✅ FIXED: Proper base URL configuration
 const getBaseUrl = () => {
+  // Use environment variable if available, otherwise use production URL
   return process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app';
 };
 
@@ -33,37 +36,42 @@ export async function POST(request: NextRequest) {
       throw new Error('Failed to get access token');
     }
 
-    // Get target URL
+    // ✅ FIXED: Use proper base URL
     const baseUrl = getBaseUrl();
     const chatId = data?.chatId;
     const targetUrl = chatId ? `${baseUrl}/chat/${chatId}` : baseUrl;
 
-    console.log('📍 [API] Target URL:', targetUrl);
+    console.log('📍 [API] Using base URL:', baseUrl);
+    console.log('🎯 [API] Target URL:', targetUrl);
 
-    // ✅ SIMPLIFIED: Use only data field for unified experience
+    // ✅ SIMPLIFIED: Use only essential fields to avoid duplicates
     const message = {
       token: token.trim(),
-      // Remove notification field to avoid platform-specific behavior
+      notification: {
+        title: title.substring(0, 100),
+        body: messageBody.substring(0, 200),
+      },
+      webpush: {
+        fcm_options: {
+          link: targetUrl,
+        },
+        notification: {
+          icon: '/icon-192.png',
+          badge: '/badge-72x72.png',
+          requireInteraction: true,
+        }
+      },
+      // ✅ IMPORTANT: All data goes here for service worker
       data: {
         title: title.substring(0, 100),
         body: messageBody.substring(0, 200),
         chatId: chatId || '',
         targetUrl: targetUrl,
         click_action: targetUrl,
-        icon: '/icon-192.png',
-        badge: '/badge-72x72.png',
         timestamp: new Date().toISOString(),
         ...data
-      },
-      // ✅ MINIMAL webpush config
-      webpush: {
-        fcm_options: {
-          link: targetUrl,
-        }
       }
     };
-
-    console.log('📨 [API] Sending unified FCM message');
 
     // Send FCM message
     const fcmResponse = await fetch(
@@ -118,8 +126,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Keep your existing getAccessToken function...
 async function getAccessToken(): Promise<string | null> {
+  // Return cached token if valid
   if (accessTokenCache && accessTokenCache.expiry > Date.now()) {
     return accessTokenCache.token;
   }
@@ -181,4 +189,13 @@ async function getAccessToken(): Promise<string | null> {
     console.error('❌ [API] Error getting access token:', error);
     return null;
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    status: 'OK',
+    message: 'Push notification API is running',
+    timestamp: new Date().toISOString(),
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  });
 }

@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js - UPDATED UNIFIED FORMAT
+// public/firebase-messaging-sw.js - UPDATED
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -14,18 +14,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-console.log('✅ [SW] Service Worker Loaded - Unified Notification Format');
+console.log('✅ [SW] Service Worker Loaded - Single Notification Fix');
 
-// ✅ FIXED: Unified background message handler
+// ✅ FIXED: Only use background message handler, disable push event
 messaging.onBackgroundMessage((payload) => {
   console.log('📬 [SW] Background message received:', payload);
   
-  // Extract data from payload (handle both formats)
-  const data = payload.data || {};
-  const notificationTitle = data.title || payload.notification?.title || 'New Message';
-  const notificationBody = data.body || payload.notification?.body || 'You have a new message';
+  const notificationTitle = payload.notification?.title || 'New Message';
+  const notificationBody = payload.notification?.body || 'You have a new message';
   
-  // Get target URL
+  // Get target URL from payload data
+  const data = payload.data || {};
   const baseUrl = self.location.origin;
   let targetUrl = `${baseUrl}/`;
   
@@ -39,28 +38,25 @@ messaging.onBackgroundMessage((payload) => {
 
   console.log('📍 [SW] Target URL:', targetUrl);
 
-  // ✅ UNIFIED NOTIFICATION OPTIONS
   const notificationOptions = {
     body: notificationBody,
     icon: '/icon-192.png',
     badge: '/badge-72x72.png',
-    image: '/icon-512.png', // For platforms that support large images
     tag: `chat-${data.chatId || 'general'}`,
     renotify: true,
     requireInteraction: true,
-    silent: false,
-    vibrate: [200, 100, 200], // vibration pattern
     data: {
       ...data,
-      targetUrl: targetUrl,
-      timestamp: new Date().toISOString()
+      targetUrl: targetUrl
     },
-    // ✅ SIMPLIFIED ACTIONS - Remove extra buttons
     actions: [
       {
-        action: 'open',
-        title: '💬 Open Chat',
-        icon: '/icon-192.png'
+        action: 'open-chat',
+        title: '💬 Open Chat'
+      },
+      {
+        action: 'dismiss',
+        title: '❌ Dismiss'
       }
     ]
   };
@@ -72,13 +68,10 @@ messaging.onBackgroundMessage((payload) => {
       
       // Show new notification
       return self.registration.showNotification(notificationTitle, notificationOptions);
-    })
-    .catch(error => {
-      console.error('❌ [SW] Error showing notification:', error);
     });
 });
 
-// ✅ FIXED: Unified notification click handler
+// ✅ FIXED: Enhanced notification click handler
 self.addEventListener('notificationclick', (event) => {
   console.log('🔔 [SW] Notification clicked - Action:', event.action);
   event.notification.close();
@@ -97,11 +90,12 @@ self.addEventListener('notificationclick', (event) => {
       
       // Check for existing tabs/windows
       for (const client of clientList) {
+        // If we find a client that's on our origin, focus it
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
           console.log('🎯 Focusing existing client:', client.url);
           
           // Navigate to target URL if different
-          if (client.url !== targetUrl && 'navigate' in client) {
+          if (client.url !== targetUrl) {
             console.log('🔄 Navigating client to:', targetUrl);
             return client.navigate(targetUrl).then(() => client.focus());
           }
@@ -115,17 +109,20 @@ self.addEventListener('notificationclick', (event) => {
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
-    }).catch(error => {
-      console.error('❌ [SW] Error in notification click:', error);
-      // Fallback: open window
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
     })
   );
 });
 
-// Handle notification close
-self.addEventListener('notificationclose', (event) => {
-  console.log('🔔 [SW] Notification closed');
+// Handle action buttons
+self.addEventListener('notificationclick', (event) => {
+  if (event.action === 'dismiss') {
+    console.log('❌ Notification dismissed');
+    event.notification.close();
+  }
 });
+
+// ✅ DISABLED: Push event handler to avoid duplicate notifications
+// self.addEventListener('push', (event) => {
+//   // Comment out or remove this to prevent duplicate notifications
+//   console.log('🚫 Push event disabled to prevent duplicates');
+// });
