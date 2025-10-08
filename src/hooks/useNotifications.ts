@@ -173,42 +173,50 @@ export const useNotifications = () => {
 
   // ✅ SEND PUSH NOTIFICATION TO CURRENT TOKEN (Testing)
   const testPushNotification = useCallback(async (title: string, body: string) => {
-    if (!fcmToken) {
-      console.log('❌ No FCM token available');
+  if (!fcmToken) {
+    console.log('❌ No FCM token available');
+    alert('No FCM token available. Please enable notifications first.');
+    return false;
+  }
+
+  try {
+    console.log('🧪 Testing push notification with token:', fcmToken.substring(0, 20) + '...');
+    
+    const response = await fetch('/api/send-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: fcmToken,
+        title,
+        body,
+        data: {
+          type: 'test',
+          timestamp: new Date().toISOString(),
+          test: true
+        }
+      }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      console.error('❌ API Error:', result);
+      alert(`Error: ${result.error}\n\nCheck console for details.`);
       return false;
     }
 
-    try {
-      const response = await fetch('/api/send-notification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token: fcmToken,
-          title,
-          body,
-          data: {
-            type: 'test',
-            timestamp: new Date().toISOString()
-          }
-        }),
-      });
+    console.log('✅ Test push notification sent:', result);
+    alert('✅ Test notification sent! Check your device for push notification.');
+    return true;
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Test push notification sent:', result);
-      
-      return result.success;
-
-    } catch (error) {
-      console.error('❌ Error sending test push notification:', error);
-      return false;
-    }
-  }, [fcmToken]);
+  } catch (error: any) {
+    console.error('❌ Error sending test push notification:', error);
+    alert(`Network Error: ${error.message}\n\nCheck if API is deployed properly.`);
+    return false;
+  }
+}, [fcmToken]);
 
   return {
     fcmToken,
