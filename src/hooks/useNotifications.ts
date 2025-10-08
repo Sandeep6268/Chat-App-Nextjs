@@ -189,31 +189,46 @@ export const useNotifications = () => {
       },
       body: JSON.stringify({
         token: fcmToken,
-        title,
-        body,
+        title: title || 'Test Push Notification',
+        body: body || 'This is a test push notification from your chat app! 🎉',
         data: {
           type: 'test',
           timestamp: new Date().toISOString(),
-          test: true
+          test: true,
+          url: window.location.origin
         }
       }),
     });
 
     const result = await response.json();
     
+    console.log('📩 API Response:', result);
+
     if (!response.ok) {
       console.error('❌ API Error:', result);
-      alert(`Error: ${result.error}\n\nCheck console for details.`);
+      
+      let errorMessage = result.error || 'Failed to send notification';
+      if (result.details) {
+        errorMessage += `\nDetails: ${result.details}`;
+      }
+      
+      alert(`Error: ${errorMessage}`);
       return false;
     }
 
-    console.log('✅ Test push notification sent:', result);
-    alert('✅ Test notification sent! Check your device for push notification.');
-    return true;
+    if (result.success) {
+      console.log('✅ Test push notification sent successfully:', result);
+      alert('✅ Test notification sent successfully! Check your device for push notification.');
+      return true;
+    } else {
+      console.error('❌ API returned success: false', result);
+      alert(`Error: ${result.error || 'Unknown error'}`);
+      return false;
+    }
 
   } catch (error: any) {
-    console.error('❌ Error sending test push notification:', error);
-    alert(`Network Error: ${error.message}\n\nCheck if API is deployed properly.`);
+    console.error('❌ Network error sending test push notification:', error);
+    alert(`Network Error: ${error.message}\n\nPlease check your internet connection.`);
     return false;
   }
 }, [fcmToken]);
