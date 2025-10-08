@@ -1,55 +1,31 @@
 // lib/firebase-messaging.ts
-import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+// Simple browser notifications without FCM
 
-// Use the same firebase config as your firestore
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
-};
-
-const app = initializeApp(firebaseConfig);
-export const messaging = getMessaging(app);
-
-export const requestForToken = async () => {
+export const requestNotificationPermission = async (): Promise<boolean> => {
   try {
-    // Check if service worker is supported
-    if (!('serviceWorker' in navigator)) {
-      console.log('Service Worker not supported');
-      return null;
+    if (!('Notification' in window)) {
+      console.log('This browser does not support notifications');
+      return false;
     }
 
-    // Check notification permission
+    if (Notification.permission === 'granted') {
+      return true;
+    }
+
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('Notification permission denied');
-      return null;
-    }
-
-    const currentToken = await getToken(messaging, { 
-      vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY 
-    });
-    
-    if (currentToken) {
-      console.log('FCM token:', currentToken);
-      return currentToken;
-    }
-    
-    console.log('No registration token available.');
-    return null;
-  } catch (err) {
-    console.error('Error getting FCM token:', err);
-    return null;
+    return permission === 'granted';
+  } catch (error) {
+    console.error('Error requesting notification permission:', error);
+    return false;
   }
 };
 
-export const onMessageListener = () =>
-  new Promise((resolve) => {
-    onMessage(messaging, (payload) => {
-      resolve(payload);
+export const showBrowserNotification = (title: string, body: string) => {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { 
+      body, 
+      icon: '/icon.png',
+      requireInteraction: true
     });
-  });
+  }
+};

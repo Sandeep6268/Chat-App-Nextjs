@@ -1,30 +1,16 @@
 // hooks/useNotifications.ts
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
-import { requestForToken, onMessageListener } from '@/lib/firebase-messaging';
+import { requestNotificationPermission, showBrowserNotification } from '@/lib/firebase-messaging';
 
 export const useNotifications = () => {
   useEffect(() => {
-    // Initialize notifications when component mounts
+    // Request notification permission when component mounts
     const initializeNotifications = async () => {
       try {
-        // Request notification permission and get FCM token
-        await requestForToken();
-
-        // Listen for foreground messages
-        onMessageListener().then((payload: any) => {
-          console.log('Received foreground message:', payload);
-          
-          // Show toast notification
-          if (payload?.notification) {
-            toast.success(payload.notification.body || 'New message', {
-              duration: 4000,
-              position: 'top-right',
-            });
-          }
-        });
+        await requestNotificationPermission();
       } catch (error) {
         console.error('Error initializing notifications:', error);
       }
@@ -33,15 +19,10 @@ export const useNotifications = () => {
     initializeNotifications();
   }, []);
 
-  const showNotification = (title: string, body: string, isImportant = false) => {
+  // ✅ Use useCallback to prevent unnecessary re-renders
+  const showNotification = useCallback((title: string, body: string, isImportant = false) => {
     // Show browser notification if permitted
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { 
-        body, 
-        icon: '/icon.png',
-        requireInteraction: isImportant
-      });
-    }
+    showBrowserNotification(title, body);
     
     // Show toast notification
     if (isImportant) {
@@ -59,9 +40,9 @@ export const useNotifications = () => {
         position: 'top-right',
       });
     }
-  };
+  }, []);
 
-  const showNewMessageNotification = (senderName: string, message: string, isActiveChat: boolean = false) => {
+  const showNewMessageNotification = useCallback((senderName: string, message: string, isActiveChat: boolean = false) => {
     // Don't show notification if user is currently viewing the chat
     if (isActiveChat && document.hasFocus()) {
       return;
@@ -72,10 +53,32 @@ export const useNotifications = () => {
       message,
       true // Mark as important
     );
-  };
+  }, [showNotification]);
+
+  // ✅ For unread messages when chat opens
+  const showUnreadMessagesNotification = useCallback((senderName: string, unreadCount: number) => {
+    showNotification(
+      `Unread messages from ${senderName}`,
+      `You have ${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`,
+      true
+    );
+  }, [showNotification]);
+
+  // ✅ NEW: For sidebar unread messages notification
+  const showSidebarUnreadNotification = useCallback((totalUnread: number, chatCount: number) => {
+    if (totalUnread === 0) return;
+
+    showNotification(
+      'Unread Messages',
+      `You have ${totalUnread} unread message${totalUnread > 1 ? 's' : ''} in ${chatCount} conversation${chatCount > 1 ? 's' : ''}`,
+      true
+    );
+  }, [showNotification]);
 
   return {
     showNotification,
-    showNewMessageNotification
+    showNewMessageNotification,
+    showUnreadMessagesNotification,
+    showSidebarUnreadNotification
   };
 };

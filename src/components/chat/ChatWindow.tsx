@@ -1,12 +1,14 @@
+// components/chat/ChatWindow.tsx
 // components/ChatWindow.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
 import { useNotifications } from '@/hooks/useNotifications';
+import { toast } from 'react-hot-toast';
 
 interface ChatWindowProps {
   chatId: string;
@@ -20,21 +22,34 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
-  const { showNewMessageNotification } = useNotifications();
+  const [hasNotifiedUnread, setHasNotifiedUnread] = useState(false);
+  const { showNewMessageNotification, showUnreadMessagesNotification } = useNotifications();
+  const previousMessagesRef = useRef<Message[]>([]);
 
   const participantName =
     otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // 🔥 Realtime messages with notifications
+  // 🔥 Realtime messages with notifications - FIXED VERSION
   useEffect(() => {
     if (!chatId || !user) return;
 
-    let previousMessages: Message[] = [];
-
     const unsubscribe = getMessages(chatId, (msgs) => {
-      // Check for new messages
-      if (previousMessages.length > 0 && msgs.length > previousMessages.length) {
-        const newMessages = msgs.slice(previousMessages.length);
+      // ✅ Check for unread messages when chat first loads
+      if (msgs.length > 0 && !hasNotifiedUnread && !hasMarkedInitialRead) {
+        const unreadMessages = msgs.filter(
+          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+        );
+        
+        // Show notification for existing unread messages
+        if (unreadMessages.length > 0 && !isActive) {
+          showUnreadMessagesNotification(participantName, unreadMessages.length);
+          setHasNotifiedUnread(true);
+        }
+      }
+
+      // ✅ Check for new incoming messages
+      if (previousMessagesRef.current.length > 0 && msgs.length > previousMessagesRef.current.length) {
+        const newMessages = msgs.slice(previousMessagesRef.current.length);
         
         newMessages.forEach((message) => {
           // Show notification for new messages from other users
@@ -50,9 +65,9 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
       }
 
       setMessages(msgs);
-      previousMessages = msgs;
+      previousMessagesRef.current = msgs;
 
-      // Mark unread messages as read when chat opens
+      // ✅ Mark unread messages as read when chat opens
       if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
         const unread = msgs.filter(
           (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
@@ -70,8 +85,19 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
     return () => {
       unsubscribe();
       setHasMarkedInitialRead(false);
+      setHasNotifiedUnread(false);
+      previousMessagesRef.current = [];
     };
-  }, [chatId, user, hasMarkedInitialRead, isActive, participantName, showNewMessageNotification]);
+  }, [
+    chatId, 
+    user, 
+    hasMarkedInitialRead, 
+    hasNotifiedUnread, 
+    isActive, 
+    participantName, 
+    showNewMessageNotification, 
+    showUnreadMessagesNotification
+  ]);
 
   // ✉️ Send message
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -137,6 +163,8 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
             <p className="text-sm text-gray-600">Active now</p>
           </div>
           <div className="flex items-center space-x-2">
+            
+
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             <span className="text-xs text-green-600 font-medium">Online</span>
           </div>
@@ -161,6 +189,8 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
               <div className="space-y-4">
                 {messages.map((m) => {
                   const isOwn = m.senderId === user?.uid;
+                  const isUnread = !m.readBy?.includes(user?.uid || '') && !isOwn;
+                  
                   return (
                     <div
                       key={m.id}
@@ -170,7 +200,9 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
                         className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                           isOwn
                             ? 'bg-green-500 text-white'
-                            : 'bg-white text-gray-800 border border-gray-200'
+                            : `bg-white text-gray-800 border ${
+                                isUnread ? 'border-2 border-yellow-400' : 'border-gray-200'
+                              }`
                         }`}
                       >
                         <p className="text-sm break-words">{m.text}</p>
@@ -181,6 +213,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
                         >
                           <span className="text-xs">
                             {formatMessageTime(m.timestamp)}
+                            {isUnread && <span className="ml-2 text-yellow-500">●</span>}
                           </span>
                           {getMessageStatusIcon(m)}
                         </div>

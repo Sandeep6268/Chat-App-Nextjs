@@ -1,14 +1,14 @@
-// --- path: /src/components/chat/ChatSidebar.tsx ---
+// components/chat/ChatSidebar.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
+import { useNotifications } from '@/hooks/useNotifications';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -18,12 +18,18 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const { user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const { showSidebarUnreadNotification } = useNotifications();
+  
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [existingChats, setExistingChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalUnread, setTotalUnread] = useState<number>(0);
   const [usersWithoutChats, setUsersWithoutChats] = useState<User[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
+
+  // Refs to track previous values for notification logic
+  const previousTotalUnreadRef = useRef<number>(0);
+  const previousChatsRef = useRef<Chat[]>([]);
 
   // Get current chat ID from URL
   const currentChatId = pathname?.split('/chat/')[1];
@@ -69,9 +75,19 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           
           // Calculate total unread count
           const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-          setTotalUnread(totalUnreadMessages);
           
-          // Update state with chats
+          // ✅ NOTIFICATION LOGIC: Show notification when unread count increases
+          if (totalUnreadMessages > previousTotalUnreadRef.current && previousTotalUnreadRef.current > 0) {
+            const chatsWithUnread = userChats.filter(chat => (chat.unreadCount || 0) > 0);
+            showSidebarUnreadNotification(totalUnreadMessages, chatsWithUnread.length);
+          }
+          
+          // Update refs with current values
+          previousTotalUnreadRef.current = totalUnreadMessages;
+          previousChatsRef.current = userChats;
+          
+          // Update state
+          setTotalUnread(totalUnreadMessages);
           setExistingChats(userChats);
           
           // Calculate which users DON'T have existing chats
@@ -107,7 +123,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         unsubscribeChats();
       }
     };
-  }, [user, currentChatId]);
+  }, [user, currentChatId, showSidebarUnreadNotification]);
 
   // Function to create new chat (one-to-one only)
   const createNewChat = async (otherUserId: string) => {
