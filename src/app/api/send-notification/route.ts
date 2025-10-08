@@ -1,228 +1,182 @@
+// app/api/send-notification/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// Firebase Admin SDK initialization
-const initializeFirebaseAdmin = () => {
-  if (typeof window !== 'undefined') {
-    throw new Error('Firebase Admin can only be used on server side');
-  }
-
-  const admin = require('firebase-admin');
-  
-  if (admin.apps.length > 0) {
-    return admin.app();
-  }
-
-  const serviceAccount = {
-    type: "service_account",
-    project_id: "whatsapp-clone-69386",
-    private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    client_email: "firebase-adminsdk-fbsvc@whatsapp-clone-69386.iam.gserviceaccount.com",
-  };
-
-  try {
-    const app = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount as any),
-      projectId: "whatsapp-clone-69386"
-    });
-
-    console.log('✅ Firebase Admin initialized successfully');
-    return app;
-  } catch (error: any) {
-    console.error('❌ Firebase Admin initialization failed:', error.message);
-    throw error;
-  }
-};
+// Simple in-memory cache for access tokens (use Redis in production)
+let accessTokenCache: { token: string; expiry: number } | null = null;
 
 export async function POST(request: NextRequest) {
-  console.log('🚀 Starting push notification request...');
+  console.log('🚀 [API] Push notification request received');
   
   try {
-    // Initialize Firebase Admin
-    const admin = require('firebase-admin');
-    let app;
-    
-    try {
-      app = initializeFirebaseAdmin();
-    } catch (initError: any) {
-      console.error('❌ Firebase Admin initialization failed:', initError.message);
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Firebase Admin initialization failed'
-        },
-        { status: 500 }
-      );
-    }
-
-    // Parse request body
-    let body;
-    try {
-      body = await request.json();
-    } catch (parseError) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Invalid JSON in request body'
-        },
-        { status: 400 }
-      );
-    }
-
+    const body = await request.json();
     const { token, title, body: messageBody, data } = body;
 
-    console.log('📤 Processing notification:', {
-      token_length: token?.length,
-      title,
-      messageBody
+    // Validate input
+    if (!token || !title || !messageBody) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Missing required fields: token, title, body' 
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log('📤 [API] Sending to token:', token.substring(0, 20) + '...');
+
+    // Get access token
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      throw new Error('Failed to get access token');
+    }
+
+    // Send FCM message
+    const fcmResponse = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}/messages:send`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: {
+            token: token,
+            notification: {
+              title: title,
+              body: messageBody,
+            },
+            webpush: {
+              headers: {
+                Urgency: 'high'
+              },
+              notification: {
+                icon: '/icon-192.png',
+                badge: '/badge-72x72.png',
+                vibrate: [200, 100, 200],
+                requireInteraction: true,
+              },
+              fcm_options: {
+                link: process.env.NEXT_PUBLIC_APP_URL || '/',
+              },
+            },
+            data: data || {},
+          },
+        }),
+      }
+    );
+
+    const responseData = await fcmResponse.json();
+
+    if (!fcmResponse.ok) {
+      console.error('❌ [API] FCM error:', responseData);
+      
+      // Handle specific FCM errors
+      if (responseData.error?.status === 'NOT_FOUND') {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Token not registered',
+            code: 'messaging/registration-token-not-registered'
+          },
+          { status: 410 }
+        );
+      }
+      
+      throw new Error(`FCM API error: ${responseData.error?.message || 'Unknown error'}`);
+    }
+
+    console.log('✅ [API] Push notification sent successfully');
+    return NextResponse.json({
+      success: true,
+      messageId: responseData.name,
     });
 
-    // ✅ IMPROVED TOKEN VALIDATION
-    if (!token) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Missing FCM token'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate token format
-    if (typeof token !== 'string') {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Invalid token format: must be a string'
-        },
-        { status: 400 }
-      );
-    }
-
-    if (token.length < 50 || token.length > 500) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: `Invalid token length: ${token.length}. Expected 50-500 characters.`
-        },
-        { status: 400 }
-      );
-    }
-
-    // Basic token format check (FCM tokens usually start with specific patterns)
-    if (!token.startsWith('f') && !token.includes(':')) {
-      console.warn('⚠️ Token format might be invalid');
-    }
-
-    if (!title) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Missing required field: title'
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!messageBody) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Missing required field: body'
-        },
-        { status: 400 }
-      );
-    }
-
-    // ✅ SIMPLIFIED PAYLOAD - Minimum required fields only
-    const message = {
-      token: token.trim(), // Trim any whitespace
-      notification: {
-        title: title.substring(0, 100), // Safe limit
-        body: messageBody.substring(0, 200), // Safe limit
-      },
-      // Remove all optional fields that might cause issues
-    };
-
-    console.log('📨 Sending FCM message with token:', token.substring(0, 20) + '...');
-    
-    try {
-      // Send the message
-      const response = await admin.messaging().send(message);
-      
-      console.log('✅ Push notification sent successfully. Message ID:', response);
-      
-      return NextResponse.json({
-        success: true,
-        messageId: response,
-        message: 'Push notification sent successfully'
-      });
-
-    }  catch (fcmError: any) {
-  console.error('❌ FCM send error:', {
-    code: fcmError.code,
-    message: fcmError.message
-  });
-  
-  let errorMessage = 'Failed to send push notification';
-  let statusCode = 500;
-
-  if (fcmError.code) {
-    switch (fcmError.code) {
-      case 'messaging/invalid-argument':
-        errorMessage = 'Invalid FCM token.';
-        statusCode = 400;
-        break;
-      case 'messaging/registration-token-not-registered':
-        errorMessage = 'FCM token is no longer valid.';
-        statusCode = 410; // Use 410 Gone for expired tokens
-        break;
-      case 'messaging/invalid-registration-token':
-        errorMessage = 'Invalid registration token.';
-        statusCode = 400;
-        break;
-      default:
-        errorMessage = `FCM Error: ${fcmError.code}`;
-    }
-  }
-
-  return NextResponse.json(
-    { 
-      success: false,
-      error: errorMessage,
-      code: fcmError.code,
-    },
-    { status: statusCode }
-  );
-}
-
   } catch (error: any) {
-    console.error('❌ Unexpected error in push notification API:', error);
+    console.error('❌ [API] Error:', error);
     
     return NextResponse.json(
       { 
         success: false,
-        error: 'Internal server error'
+        error: error.message || 'Internal server error'
       },
       { status: 500 }
     );
   }
 }
 
-export async function GET() {
-  try {
-    const admin = require('firebase-admin');
-    initializeFirebaseAdmin();
-    
-    return NextResponse.json({
-      success: true,
-      status: 'Firebase Admin is configured correctly',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error: any) {
-    return NextResponse.json({
-      success: false,
-      status: 'Firebase Admin configuration error',
-      error: error.message
-    }, { status: 500 });
+async function getAccessToken(): Promise<string | null> {
+  // Return cached token if valid
+  if (accessTokenCache && accessTokenCache.expiry > Date.now()) {
+    return accessTokenCache.token;
   }
+
+  try {
+    const serviceAccount = {
+      type: "service_account",
+      project_id: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+      token_uri: "https://oauth2.googleapis.com/token",
+    };
+
+    if (!serviceAccount.private_key || !serviceAccount.client_email) {
+      throw new Error('Missing Firebase service account credentials');
+    }
+
+    // Create JWT
+    const header = Buffer.from(JSON.stringify({
+      alg: 'RS256',
+      typ: 'JWT'
+    })).toString('base64url');
+
+    const now = Math.floor(Date.now() / 1000);
+    const payload = Buffer.from(JSON.stringify({
+      iss: serviceAccount.client_email,
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+      aud: serviceAccount.token_uri,
+      exp: now + 3600,
+      iat: now,
+    })).toString('base64url');
+
+    const crypto = await import('crypto');
+    const sign = crypto.createSign('RSA-SHA256');
+    sign.update(header + '.' + payload);
+    const signature = sign.sign(serviceAccount.private_key, 'base64url');
+
+    const jwt = `${header}.${payload}.${signature}`;
+
+    // Exchange JWT for access token
+    const tokenResponse = await fetch(serviceAccount.token_uri, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+    });
+
+    const tokenData = await tokenResponse.json();
+    
+    if (tokenData.access_token) {
+      // Cache the token (expires in 1 hour, but we'll refresh after 50 minutes)
+      accessTokenCache = {
+        token: tokenData.access_token,
+        expiry: Date.now() + 50 * 60 * 1000 // 50 minutes
+      };
+      return tokenData.access_token;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('❌ [API] Error getting access token:', error);
+    return null;
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    status: 'OK',
+    message: 'Push notification API is running',
+    timestamp: new Date().toISOString()
+  });
 }

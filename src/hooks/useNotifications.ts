@@ -115,12 +115,12 @@ export const useNotifications = () => {
     }
   }, [user]);
 
-// ✅ FIXED: Send Push Notification with Token Refresh
+// hooks/useNotifications.ts - Updated sendPushNotification function
 const sendPushNotification = useCallback(async (userId: string, title: string, body: string, data?: any) => {
   try {
-    console.log('🚀 [NOTIFICATIONS] Sending push to:', userId);
+    console.log('🚀 [NOTIFICATIONS] Sending push to user:', userId);
 
-    // Get user's FCM tokens
+    // Get user's document
     const userRef = doc(firestore, 'users', userId);
     const userSnap = await getDoc(userRef);
     
@@ -130,25 +130,30 @@ const sendPushNotification = useCallback(async (userId: string, title: string, b
     }
 
     const userData = userSnap.data();
-    let userTokens = userData.fcmTokens || [];
+    const userTokens = userData.fcmTokens || [];
 
-    console.log(`📋 [NOTIFICATIONS] User has ${userTokens.length} tokens`);
+    console.log(`📋 [NOTIFICATIONS] User has ${userTokens.length} token(s)`);
 
     if (userTokens.length === 0) {
-      console.log('❌ [NOTIFICATIONS] No FCM tokens found');
+      console.log('❌ [NOTIFICATIONS] No FCM tokens found for user');
       return false;
     }
 
-    // Try to send to each token
+    let success = false;
+    const expiredTokens: string[] = [];
+
+    // Try each token
     for (const token of userTokens) {
       try {
-        console.log('📤 [NOTIFICATIONS] Sending to token:', token.substring(0, 20) + '...');
+        console.log('📤 [NOTIFICATIONS] Attempting send to token:', token.substring(0, 20) + '...');
         
         const response = await fetch('/api/send-notification', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
-            token: token,
+            token: token.trim(),
             title: title,
             body: body,
             data: data || {}
@@ -159,34 +164,34 @@ const sendPushNotification = useCallback(async (userId: string, title: string, b
         
         if (response.ok && result.success) {
           console.log('✅ [NOTIFICATIONS] Push sent successfully!');
-          return true;
+          success = true;
+          break; // Stop after first successful send
         } else {
-          // Handle expired token
-          if (result.code === 'messaging/registration-token-not-registered' || response.status === 410) {
-            console.log('🔄 [NOTIFICATIONS] Token expired, removing from user...');
-            
-            // Remove expired token from user's document
-            await updateDoc(userRef, {
-              fcmTokens: userTokens.filter((t: string) => t !== token)
-            });
-            
-            // Update local array
-            userTokens = userTokens.filter((t: string) => t !== token);
-            console.log('🗑️ [NOTIFICATIONS] Expired token removed');
-            continue; // Try next token
-          }
+          console.log('❌ [NOTIFICATIONS] Push failed:', result.error);
           
-          console.error('❌ [NOTIFICATIONS] Push failed:', result.error);
-          continue; // Try next token
+          // Check if token is expired
+          if (result.code === 'messaging/registration-token-not-registered' || 
+              response.status === 410) {
+            console.log('🔄 [NOTIFICATIONS] Token expired, marking for removal');
+            expiredTokens.push(token);
+          }
+          continue;
         }
       } catch (error) {
-        console.log('❌ [NOTIFICATIONS] Error with token, trying next...', error);
+        console.log('❌ [NOTIFICATIONS] Network error with token:', error);
         continue;
       }
     }
 
-    console.log('❌ [NOTIFICATIONS] All tokens failed or expired');
-    return false;
+    // Remove expired tokens from user's document
+    if (expiredTokens.length > 0) {
+      console.log(`🗑️ [NOTIFICATIONS] Removing ${expiredTokens.length} expired tokens`);
+      await updateDoc(userRef, {
+        fcmTokens: userTokens.filter((t: string) => !expiredTokens.includes(t))
+      });
+    }
+
+    return success;
 
   } catch (error) {
     console.error('❌ [NOTIFICATIONS] Error sending push:', error);
