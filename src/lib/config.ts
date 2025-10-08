@@ -4,7 +4,7 @@ export const getAppConfig = () => {
   const productionUrl = 'https://chat-app-nextjs-gray-eta.vercel.app';
   
   // For development
-  const developmentUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const developmentUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app';
   
   const isProduction = process.env.NODE_ENV === 'production';
   const baseUrl = isProduction ? productionUrl : developmentUrl;
