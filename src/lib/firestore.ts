@@ -301,7 +301,7 @@ export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) 
 };
 
 // Message operations - SIMPLIFIED FOR ONE-TO-ONE
-// Message operations - UPDATED WITH PROPER NOTIFICATION LOGIC
+// In your firestore.ts - UPDATED sendMessage function
 export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 'timestamp' | 'status'>) => {
   try {
     const messagesRef = messagesCollection(chatId);
@@ -316,8 +316,8 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
       sender: message.senderId,
       timestamp: serverTimestamp(),
       read: false,
-      readBy: [message.senderId], // Sender automatically reads their own message
-      status: 'sent', // Initial status
+      readBy: [message.senderId],
+      status: 'sent',
       type: 'text',
     };
     
@@ -332,7 +332,7 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
       updatedAt: serverTimestamp(),
     });
 
-    // ✅ FIXED: Send push notification to the RECEIVER
+    // ✅ FIXED: Send push notification with proper data
     await sendMessageNotification(chatId, message.senderId, message.text, chatData);
     
     return messageRef;
@@ -342,7 +342,7 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
   }
 };
 
-// ✅ NEW: Function to send push notification to receiver
+// ✅ UPDATED: Enhanced notification function with proper data
 const sendMessageNotification = async (
   chatId: string, 
   senderId: string, 
@@ -386,12 +386,14 @@ const sendMessageNotification = async (
       return;
     }
 
-    // Prepare notification data
+    // ✅ IMPORTANT: Prepare proper notification data for service worker
     const notificationData = {
       chatId: chatId,
       senderId: senderId,
       type: 'new_message',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Add any additional data needed
+      click_action: `/chat/${chatId}` // This helps some browsers
     };
 
     // Send push notification using your API
@@ -401,10 +403,12 @@ const sendMessageNotification = async (
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        token: receiverData.fcmTokens?.[0], // Use first FCM token
+        token: receiverData.fcmTokens?.[0],
         title: `💬 ${senderName}`,
         body: messageText.length > 100 ? messageText.substring(0, 100) + '...' : messageText,
-        data: notificationData
+        data: notificationData, // This goes to service worker
+        // Also include in notification for some platforms
+        click_action: `/chat/${chatId}`
       }),
     });
 
@@ -419,7 +423,6 @@ const sendMessageNotification = async (
       if (result.code === 'messaging/registration-token-not-registered' || response.status === 410) {
         console.log('🔄 [NOTIFICATION] Removing expired token...');
         
-        // Remove expired token from receiver's document
         const updatedTokens = (receiverData.fcmTokens || []).filter((token: string) => 
           token !== receiverData.fcmTokens[0]
         );
@@ -434,7 +437,6 @@ const sendMessageNotification = async (
 
   } catch (error) {
     console.error('❌ [NOTIFICATION] Error sending message notification:', error);
-    // Don't throw error - notification failure shouldn't break message sending
   }
 };
 export const getMessages = (chatId: string, callback: (messages: Message[]) => void) => {
