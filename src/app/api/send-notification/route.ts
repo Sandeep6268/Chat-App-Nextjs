@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function getAccessToken(): Promise<string | null> {
-  // Return cached token if valid
+  // ... (keep your existing getAccessToken function)
   if (accessTokenCache && accessTokenCache.expiry > Date.now()) {
     return accessTokenCache.token;
   }
@@ -189,13 +189,4 @@ async function getAccessToken(): Promise<string | null> {
     console.error('❌ [API] Error getting access token:', error);
     return null;
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    status: 'OK',
-    message: 'Push notification API is running',
-    timestamp: new Date().toISOString(),
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  });
 }
