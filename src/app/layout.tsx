@@ -1,4 +1,4 @@
-// --- path: /src/app/layout.tsx ---
+// app/layout.tsx
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -29,19 +29,17 @@ export default function RootLayout({
               style: {
                 background: '#363636',
                 color: '#fff',
+                fontSize: '14px',
               },
               success: {
-                duration: 3000,
-                iconTheme: {
-                  primary: '#22c55e',
-                  secondary: '#fff',
+                duration: 4000,
+                style: {
+                  background: '#10B981',
+                  color: '#fff',
                 },
-              },
-              error: {
-                duration: 5000,
                 iconTheme: {
-                  primary: '#ef4444',
-                  secondary: '#fff',
+                  primary: '#fff',
+                  secondary: '#10B981',
                 },
               },
             }}

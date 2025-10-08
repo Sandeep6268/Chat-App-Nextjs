@@ -1,3 +1,4 @@
+// components/ChatWindow.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,31 +6,54 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
+import { useNotifications } from '@/hooks/useNotifications';
 
 interface ChatWindowProps {
   chatId: string;
   otherUser?: User | null;
+  isActive?: boolean;
 }
 
-export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
+export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatWindowProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
+  const { showNewMessageNotification } = useNotifications();
 
   const participantName =
     otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // 🔥 Realtime messages
+  // 🔥 Realtime messages with notifications
   useEffect(() => {
     if (!chatId || !user) return;
 
+    let previousMessages: Message[] = [];
+
     const unsubscribe = getMessages(chatId, (msgs) => {
+      // Check for new messages
+      if (previousMessages.length > 0 && msgs.length > previousMessages.length) {
+        const newMessages = msgs.slice(previousMessages.length);
+        
+        newMessages.forEach((message) => {
+          // Show notification for new messages from other users
+          if (message.senderId !== user.uid) {
+            const isChatActive = isActive && document.hasFocus();
+            showNewMessageNotification(
+              participantName,
+              message.text,
+              isChatActive
+            );
+          }
+        });
+      }
+
       setMessages(msgs);
+      previousMessages = msgs;
 
       // Mark unread messages as read when chat opens
-      if (msgs.length > 0 && !hasMarkedInitialRead) {
+      if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
         const unread = msgs.filter(
           (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
         );
@@ -47,7 +71,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
       unsubscribe();
       setHasMarkedInitialRead(false);
     };
-  }, [chatId, user, hasMarkedInitialRead]);
+  }, [chatId, user, hasMarkedInitialRead, isActive, participantName, showNewMessageNotification]);
 
   // ✉️ Send message
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -215,21 +239,16 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
           z-index: 1000 !important;
           opacity: 0.9 !important;
           transition: all 0.2s ease-in-out !important;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 14l-7 7m0 0l-7-7m7 7V3'%3E%3C/path%3E%3C/svg%3E") !important;
+          background-repeat: no-repeat !important;
+          background-position: center !important;
+          background-size: 20px 20px !important;
         }
         
         .scroll-to-bottom-follow-button:hover {
           background-color: #059669 !important;
           opacity: 1 !important;
           transform: scale(1.05) !important;
-        }
-        
-        /* ScrollToBottom container styles */
-        .react-scroll-to-bottom--css-uzqrv-79elbk {
-          height: 100% !important;
-        }
-        
-        .react-scroll-to-bottom--css-ikyem-1n7m0yu {
-          height: 100% !important;
         }
       `}</style>
     </div>
