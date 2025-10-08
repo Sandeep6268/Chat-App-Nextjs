@@ -275,6 +275,7 @@ useEffect(() => {
     }
     
     // Navigate to chat
+    window.location.href = `/chat/${chatId}`;// Use full reload to ensure state resets
     router.push(`/chat/${chatId}`);
     
     // Close sidebar on mobile when chat is selected
