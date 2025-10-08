@@ -167,7 +167,7 @@ export default function SpecificChatPage() {
           <ChatWindow chatId={chatId} otherUser={otherUser} />
           
           {/* Back Button for Mobile - Only show when sidebar is closed */}
-          {isMobile && !isSidebarOpen && (
+          {/* {isMobile && !isSidebarOpen && (
             <button
               onClick={toggleSidebar}
               className="md:hidden absolute top-4 left-4 p-2 bg-green-600 text-white rounded-full shadow-lg z-10"
@@ -176,7 +176,7 @@ export default function SpecificChatPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-          )}
+          )} */}
         </div>
       </main>
     </div>
