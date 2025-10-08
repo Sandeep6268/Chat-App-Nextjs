@@ -145,8 +145,10 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         onSelectChat();
       }
       
-      // Use router.push for proper navigation
-      router.push(`/chat/${chatRef.id}`);
+      //console.log('🔄 Navigating to chat:', chatRef.id);
+      
+      // ✅ FIXED: Force navigation with router.replace
+      router.replace(`/chat/${chatRef.id}`);
       
     } catch (error) {
       console.error('Error creating chat:', error);
@@ -156,28 +158,31 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 
-  // Handle chat click - mark messages as read when user clicks on chat
-  const handleChatClick = async (chatId: string, hasUnread: boolean, e?: React.MouseEvent) => {
-    // Prevent default link behavior if event is provided
-    if (e) {
-      e.preventDefault();
+  // ✅ FIXED: Improved chat click handler with better navigation
+  const handleChatClick = async (chatId: string, hasUnread: boolean) => {
+    //console.log('🔄 Chat clicked:', chatId, 'Current chat:', currentChatId, 'Has unread:', hasUnread);
+    
+    // Don't navigate if it's the same chat
+    if (chatId === currentChatId) {
+      //console.log('ℹ️ Same chat, skipping navigation');
+      return;
     }
-    
-    console.log('🔄 Chat clicked:', chatId, 'Has unread:', hasUnread);
-    
+
     // Mark messages as read when user clicks on any chat (not just current one)
     if (hasUnread && user) {
       try {
-        console.log('📨 Marking messages as read for chat:', chatId);
+        //console.log('📨 Marking messages as read for chat:', chatId);
         await markAllMessagesAsRead(chatId, user.uid);
-        console.log('✅ Messages marked as read successfully');
+        //console.log('✅ Messages marked as read successfully');
       } catch (error) {
         console.error('❌ Error marking messages as read:', error);
       }
     }
     
-    // Use router.push for navigation instead of Link
-    router.push(`/chat/${chatId}`);
+    // ✅ FIXED: Use router.replace instead of router.push for better reliability
+    //console.log('🔄 Navigating to chat:', chatId);
+    // router.replace(`/chat/${chatId}`);
+    window.location.href = `/chat/${chatId}`;
     
     // Close sidebar on mobile when chat is selected
     if (onSelectChat) {
@@ -187,12 +192,12 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 
   // Get other user's info from chat (one-to-one only)
   const getOtherUserInfo = (chat: Chat) => {
-    if (!user) return { name: 'Unknown User', email: '', photoURL: null };
+    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
     
     const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
     
     if (otherParticipants.length === 0) {
-      return { name: 'Unknown User', email: '', photoURL: null };
+      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
     }
     
     // For one-on-one chats, get the other user
@@ -200,13 +205,14 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     const otherUser = availableUsers.find(u => u.uid === otherUserId);
     
     if (!otherUser) {
-      return { name: 'Unknown User', email: '', photoURL: null };
+      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
     }
     
     return {
       name: otherUser.displayName || otherUser.email || 'Unknown User',
       email: otherUser.email || '',
-      photoURL: otherUser.photoURL
+      photoURL: otherUser.photoURL,
+      uid: otherUser.uid
     };
   };
 
@@ -406,7 +412,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                           ? 'bg-orange-50 border-orange-200 hover:bg-orange-100' 
                           : 'bg-white border-gray-100 hover:bg-gray-50'
                     }`}
-                    onClick={(e) => handleChatClick(chat.id, hasUnread, e)}
+                    onClick={() => handleChatClick(chat.id, hasUnread)}
                   >
                     <div className="flex items-center space-x-3">
                       {/* User Avatar */}

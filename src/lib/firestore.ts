@@ -153,7 +153,7 @@ export const getChat = async (chatId: string) => {
 
 export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
   try {
-    console.log('🔄 markAllMessagesAsRead called for chat:', chatId, 'user:', userId);
+    //console.log('🔄 markAllMessagesAsRead called for chat:', chatId, 'user:', userId);
     
     const messagesRef = messagesCollection(chatId);
     const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -192,13 +192,13 @@ export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
           status: isReadByOther ? 'read' : 'delivered'
         });
         
-        console.log(`✅ Marking message ${messageDoc.id} as read by ${userId}`);
+        //console.log(`✅ Marking message ${messageDoc.id} as read by ${userId}`);
       }
     }
     
     if (markedCount > 0) {
       await batch.commit();
-      console.log(`🎯 Successfully marked ${markedCount} messages as read`);
+      //console.log(`🎯 Successfully marked ${markedCount} messages as read`);
       
       // Update chat's last message status
       await updateDoc(chatRef, {
@@ -206,9 +206,9 @@ export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
         updatedAt: serverTimestamp()
       });
       
-      console.log('✅ Chat last message status updated to read');
+      //console.log('✅ Chat last message status updated to read');
     } else {
-      console.log('ℹ️ No messages to mark as read');
+      //console.log('ℹ️ No messages to mark as read');
     }
     
   } catch (error) {
@@ -234,11 +234,11 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
       // Count only messages from other user that are unread
       if (sender !== userId && !readBy.includes(userId)) {
         unreadCount++;
-        console.log(`📊 Unread message found: ${messageDoc.id} from ${sender}`);
+        //console.log(`📊 Unread message found: ${messageDoc.id} from ${sender}`);
       }
     });
     
-    console.log(`📊 Total unread count for chat ${chatId}: ${unreadCount}`);
+    //console.log(`📊 Total unread count for chat ${chatId}: ${unreadCount}`);
     return unreadCount;
   } catch (error) {
     console.error('Error calculating unread count:', error);
