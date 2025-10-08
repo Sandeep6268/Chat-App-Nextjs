@@ -1,3 +1,4 @@
+// --- path: /src/components/chat/ChatWindow.tsx ---
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -18,6 +19,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
+  const [isUserActiveInThisChat, setIsUserActiveInThisChat] = useState(false);
 
   // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
