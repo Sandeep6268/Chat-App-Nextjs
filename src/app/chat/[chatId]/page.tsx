@@ -24,6 +24,7 @@ export default function SpecificChatPage() {
   const [chatLoading, setChatLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  
 
   // Check if mobile device
   useEffect(() => {

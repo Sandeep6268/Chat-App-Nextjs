@@ -19,9 +19,38 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
+  // const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
+
+  // Check if user is near bottom of messages
+  const isUserNearBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    
+    const threshold = 100; // pixels from bottom
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distanceFromBottom <= threshold;
+  };
+
+  // Scroll to bottom function
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
+      setShowScrollButton(false);
+    }
+  };
+
+  // Handle scroll events to show/hide scroll button
+  const handleScroll = () => {
+    if (!isUserNearBottom()) {
+      setShowScrollButton(true);
+    } else {
+      setShowScrollButton(false);
+    }
+  };
 
   // Fetch messages in real-time
   useEffect(() => {
@@ -29,6 +58,14 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
 
     const unsubscribe = getMessages(chatId, (messages) => {
       setMessages(messages);
+      
+      // Auto-scroll to bottom only once when first opening chat
+      // if (messages.length > 0 && !hasAutoScrolled) {
+      //   setTimeout(() => {
+      //     scrollToBottom('auto');
+      //     setHasAutoScrolled(true);
+      //   }, 300);
+      // }
       
       // Mark messages as read when user first opens the chat
       if (messages.length > 0 && !hasMarkedInitialRead) {
@@ -51,14 +88,19 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
 
     return () => {
       unsubscribe();
-      setHasMarkedInitialRead(false); // Reset when switching chats
+      setHasMarkedInitialRead(false);
+      // setHasAutoScrolled(false); // Reset when switching chats
     };
-  }, [chatId, user, hasMarkedInitialRead]);
+  }, [chatId, user, hasMarkedInitialRead, ]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Add scroll event listener
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,7 +200,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
       {/* Messages Area - Scrollable with fixed height */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-6 bg-gray-50"
+        className="flex-1 overflow-y-auto p-6 bg-gray-50 relative"
         style={{ height: 'calc(100vh - 180px)' }}
       >
         {messages.length === 0 ? (
@@ -209,6 +251,19 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
             })}
             <div ref={messagesEndRef} />
           </div>
+        )}
+
+        {/* Scroll to bottom button - Only show when user is not at bottom */}
+        {showScrollButton && (
+          <button
+            onClick={() => scrollToBottom('smooth')}
+            className="sticky bottom-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white p-3 rounded-full shadow-lg hover:bg-green-600 transition-colors z-20"
+            title="Scroll to bottom"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
         )}
       </div>
 
