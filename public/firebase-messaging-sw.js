@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js - UPDATED NOTIFICATION CLICK HANDLER
+// public/firebase-messaging-sw.js - UPDATED
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -11,26 +11,44 @@ const firebaseConfig = {
   appId: "1:580532933743:web:d74eca375178f6a3c2699a"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-console.log('✅ [SW] Service Worker Loaded - Version 3');
+console.log('✅ [SW] Service Worker Loaded - Single Notification Fix');
 
-// Enhanced background message handler
+// ✅ FIXED: Only use background message handler, disable push event
 messaging.onBackgroundMessage((payload) => {
   console.log('📬 [SW] Background message received:', payload);
   
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationBody = payload.notification?.body || 'You have a new message';
   
+  // Get target URL from payload data
+  const data = payload.data || {};
+  const baseUrl = self.location.origin;
+  let targetUrl = `${baseUrl}/`;
+  
+  if (data.chatId) {
+    targetUrl = `${baseUrl}/chat/${data.chatId}`;
+  } else if (data.url) {
+    targetUrl = data.url;
+  } else if (data.click_action) {
+    targetUrl = data.click_action;
+  }
+
+  console.log('📍 [SW] Target URL:', targetUrl);
+
   const notificationOptions = {
     body: notificationBody,
     icon: '/icon-192.png',
     badge: '/badge-72x72.png',
-    tag: 'chat-message',
+    tag: `chat-${data.chatId || 'general'}`,
+    renotify: true,
     requireInteraction: true,
-    data: payload.data || {},
+    data: {
+      ...data,
+      targetUrl: targetUrl
+    },
     actions: [
       {
         action: 'open-chat',
@@ -43,49 +61,42 @@ messaging.onBackgroundMessage((payload) => {
     ]
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // Close any existing notifications with same tag
+  self.registration.getNotifications({ tag: notificationOptions.tag })
+    .then(notifications => {
+      notifications.forEach(notification => notification.close());
+      
+      // Show new notification
+      return self.registration.showNotification(notificationTitle, notificationOptions);
+    });
 });
 
 // ✅ FIXED: Enhanced notification click handler
 self.addEventListener('notificationclick', (event) => {
-  console.log('🔔 [SW] Notification clicked:', event.notification.tag);
-  console.log('📱 Action clicked:', event.action);
-  console.log('📊 Notification data:', event.notification.data);
-  
+  console.log('🔔 [SW] Notification clicked - Action:', event.action);
   event.notification.close();
 
   const notificationData = event.notification.data || {};
-  const chatId = notificationData.chatId;
-  const baseUrl = self.location.origin;
-  
-  let targetUrl = baseUrl + '/'; // Default to home
-  
-  // If chatId is available, navigate directly to that chat
-  if (chatId) {
-    targetUrl = `${baseUrl}/chat/${chatId}`;
-    console.log(`📍 Navigating to chat: ${targetUrl}`);
-  } else {
-    console.log('📍 No chatId found, navigating to home');
-  }
+  let targetUrl = notificationData.targetUrl || self.location.origin + '/';
+
+  console.log('📍 [SW] Navigating to:', targetUrl);
 
   event.waitUntil(
     clients.matchAll({ 
       type: 'window',
       includeUncontrolled: true 
     }).then((clientList) => {
-      console.log(`🔍 Found ${clientList.length} open windows`);
+      console.log(`🔍 Found ${clientList.length} client windows`);
       
-      // Check if there's already a window/tab open with our app
+      // Check for existing tabs/windows
       for (const client of clientList) {
-        console.log('🏷️ Checking client:', client.url);
-        
-        // If client is from our domain, focus it
-        if (client.url.startsWith(baseUrl)) {
-          console.log('🎯 Found existing app window, focusing...');
+        // If we find a client that's on our origin, focus it
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          console.log('🎯 Focusing existing client:', client.url);
           
-          // Navigate to the target URL if different
-          if (chatId && !client.url.includes(`/chat/${chatId}`)) {
-            console.log('🔄 Navigating existing window to chat...');
+          // Navigate to target URL if different
+          if (client.url !== targetUrl) {
+            console.log('🔄 Navigating client to:', targetUrl);
             return client.navigate(targetUrl).then(() => client.focus());
           }
           
@@ -93,14 +104,8 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       
-      // If no window exists, open a new one
-      console.log('🆕 Opening new window...');
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-    }).catch(error => {
-      console.error('❌ Error in notification click:', error);
-      // Fallback: always open window
+      // If no client found, open new window
+      console.log('🆕 Opening new window:', targetUrl);
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
@@ -108,51 +113,16 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Handle notification action buttons
-self.addEventListener('notificationclose', (event) => {
-  console.log('🔔 [SW] Notification closed:', event.notification.tag);
-});
-
-// Enhanced push event handler
-self.addEventListener('push', (event) => {
-  console.log('📬 [SW] Push event received');
-  
-  let data = {};
-  try {
-    data = event.data?.json() || {};
-  } catch (err) {
-    data = {
-      notification: {
-        title: 'New Message',
-        body: 'You have a new message'
-      },
-      data: {}
-    };
+// Handle action buttons
+self.addEventListener('notificationclick', (event) => {
+  if (event.action === 'dismiss') {
+    console.log('❌ Notification dismissed');
+    event.notification.close();
   }
-
-  const options = {
-    body: data.notification?.body || 'You have a new message',
-    icon: '/icon-192.png',
-    badge: '/badge-72x72.png',
-    tag: `push-${Date.now()}`,
-    requireInteraction: true,
-    data: data.data || {},
-    actions: [
-      {
-        action: 'open-chat',
-        title: '💬 Open Chat'
-      },
-      {
-        action: 'dismiss',
-        title: '❌ Dismiss'
-      }
-    ]
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(
-      data.notification?.title || 'New Message',
-      options
-    )
-  );
 });
+
+// ✅ DISABLED: Push event handler to avoid duplicate notifications
+// self.addEventListener('push', (event) => {
+//   // Comment out or remove this to prevent duplicate notifications
+//   console.log('🚫 Push event disabled to prevent duplicates');
+// });
