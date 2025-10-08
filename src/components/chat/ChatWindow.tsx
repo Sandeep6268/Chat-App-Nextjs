@@ -1,7 +1,6 @@
-// --- path: /src/components/chat/ChatWindow.tsx ---
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
@@ -19,92 +18,78 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
-  // const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isUserAtBottom, setIsUserAtBottom] = useState(true);
 
-  // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // Check if user is near bottom of messages
-  const isUserNearBottom = () => {
+  // ✅ Check scroll position properly
+  const isNearBottom = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return true;
-    
-    const threshold = 100; // pixels from bottom
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    return distanceFromBottom <= threshold;
-  };
+    return distanceFromBottom < 100;
+  }, []);
 
-  // Scroll to bottom function
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior });
-      setShowScrollButton(false);
-    }
-  };
-
-  // Handle scroll events to show/hide scroll button
-  const handleScroll = () => {
-    if (!isUserNearBottom()) {
-      setShowScrollButton(true);
-    } else {
-      setShowScrollButton(false);
-    }
-  };
-
-  // Fetch messages in real-time
-  useEffect(() => {
-    if (!chatId || !user) return;
-
-    const unsubscribe = getMessages(chatId, (messages) => {
-      setMessages(messages);
-      
-      // Auto-scroll to bottom only once when first opening chat
-      // if (messages.length > 0 && !hasAutoScrolled) {
-      //   setTimeout(() => {
-      //     scrollToBottom('auto');
-      //     setHasAutoScrolled(true);
-      //   }, 300);
-      // }
-      
-      // Mark messages as read when user first opens the chat
-      if (messages.length > 0 && !hasMarkedInitialRead) {
-        const unreadMessages = messages.filter(msg => 
-          !msg.readBy?.includes(user.uid) && msg.senderId !== user.uid
-        );
-        
-        if (unreadMessages.length > 0) {
-          console.log('🎯 First time opening chat, marking messages as read');
-          markAllMessagesAsRead(chatId, user.uid)
-            .then(() => {
-              setHasMarkedInitialRead(true);
-            })
-            .catch(console.error);
-        } else {
-          setHasMarkedInitialRead(true);
-        }
-      }
-    });
-
-    return () => {
-      unsubscribe();
-      setHasMarkedInitialRead(false);
-      // setHasAutoScrolled(false); // Reset when switching chats
-    };
-  }, [chatId, user, hasMarkedInitialRead, ]);
-
-  // Add scroll event listener
-  useEffect(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const container = messagesContainerRef.current;
     if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      setShowScrollButton(false);
+      setIsUserAtBottom(true);
     }
   }, []);
 
+  // ✅ Scroll handler - user can scroll up now
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const nearBottom = isNearBottom();
+    setIsUserAtBottom(nearBottom);
+    setShowScrollButton(!nearBottom);
+  }, [isNearBottom]);
+
+  // ✅ Realtime message subscription
+  useEffect(() => {
+    if (!chatId || !user) return;
+
+    const unsubscribe = getMessages(chatId, (msgs) => {
+      setMessages(msgs);
+
+      // Mark unread as read once
+      if (msgs.length > 0 && !hasMarkedInitialRead) {
+        const unread = msgs.filter(
+          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+        );
+        if (unread.length > 0) {
+          markAllMessagesAsRead(chatId, user.uid).catch(console.error);
+        }
+        setHasMarkedInitialRead(true);
+      }
+
+      // ✅ Only scroll if user is at bottom OR message is sent by self
+      const lastMsg = msgs[msgs.length - 1];
+      const sentBySelf = lastMsg?.senderId === user.uid;
+
+      if (sentBySelf || isUserAtBottom) {
+        setTimeout(() => scrollToBottom('smooth'), 100);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [chatId, user, hasMarkedInitialRead, isUserAtBottom, scrollToBottom]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleScroll);
+    handleScroll();
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user || !chatId) return;
+    if (!newMessage.trim() || !user) return;
 
     try {
       setLoading(true);
@@ -112,12 +97,13 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
         text: newMessage,
         senderId: user.uid,
         read: false,
-        type: 'text'
+        type: 'text',
       });
       setNewMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
-      alert('Error sending message. Please try again.');
+      setTimeout(() => scrollToBottom('smooth'), 100);
+    } catch (err) {
+      console.error(err);
+      alert('Error sending message.');
     } finally {
       setLoading(false);
     }
@@ -133,63 +119,36 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
     }
   };
 
-  // Get message status icon
   const getMessageStatusIcon = (message: Message) => {
-    const isOwnMessage = message.senderId === user?.uid;
-    
-    if (!isOwnMessage) return null;
-
+    const isOwn = message.senderId === user?.uid;
+    if (!isOwn) return null;
     switch (message.status) {
       case 'read':
-        return (
-          <span className="text-blue-500 ml-2" title="Read">
-            ✓✓
-          </span>
-        );
+        return <span className="text-blue-500 ml-2">✓✓</span>;
       case 'delivered':
-        return (
-          <span className="text-gray-400 ml-2" title="Delivered">
-            ✓✓
-          </span>
-        );
-      case 'sent':
+        return <span className="text-gray-400 ml-2">✓✓</span>;
       default:
-        return (
-          <span className="text-gray-400 ml-2" title="Sent">
-            ✓
-          </span>
-        );
+        return <span className="text-gray-400 ml-2">✓</span>;
     }
   };
 
   if (!chatId) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a chat</h3>
-          <p className="text-gray-500">Choose a conversation from the sidebar to start messaging</p>
-        </div>
+        <p>Select a chat to start messaging</p>
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex flex-col bg-white h-full">
-      {/* Chat Header - Fixed at top */}
-      <div className="bg-green-50 px-6 py-4 border-b border-gray-200 flex-shrink-0 sticky top-0 z-10">
+      {/* Header */}
+      <div className="bg-green-50 px-6 py-4 border-b border-gray-200 sticky top-0 z-10">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-lg font-semibold text-gray-800">
-              {participantName}
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-800">{participantName}</h2>
             <p className="text-sm text-gray-600">Active now</p>
           </div>
-          {/* Always show online indicator when user is in this chat */}
           <div className="flex items-center space-x-2">
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             <span className="text-xs text-green-600 font-medium">Online</span>
@@ -197,53 +156,37 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
         </div>
       </div>
 
-      {/* Messages Area - Scrollable with fixed height */}
-      <div 
+      {/* Messages */}
+      <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto p-6 bg-gray-50 relative"
         style={{ height: 'calc(100vh - 180px)' }}
       >
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No messages yet</h3>
-              <p className="text-gray-500">Start the conversation by sending a message</p>
-            </div>
+          <div className="flex items-center justify-center h-full text-gray-500">
+            No messages yet
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((message) => {
-              const isOwnMessage = message.senderId === user?.uid;
-              
+            {messages.map((msg) => {
+              const isOwn = msg.senderId === user?.uid;
               return (
-                <div
-                  key={message.id}
-                  className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
-                >
+                <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                      isOwnMessage
+                      isOwn
                         ? 'bg-green-500 text-white'
                         : 'bg-white text-gray-800 border border-gray-200'
                     }`}
                   >
-                    <p className="text-sm">{message.text}</p>
-                    <div className={`flex justify-between items-center mt-1 ${
-                      isOwnMessage ? 'text-green-100' : 'text-gray-500'
-                    }`}>
-                      <span className="text-xs">
-                        {formatMessageTime(message.timestamp)}
-                      </span>
-                      {isOwnMessage && (
-                        <div className="flex items-center">
-                          {getMessageStatusIcon(message)}
-                        </div>
-                      )}
+                    <p className="text-sm">{msg.text}</p>
+                    <div
+                      className={`flex justify-between items-center mt-1 ${
+                        isOwn ? 'text-green-100' : 'text-gray-500'
+                      }`}
+                    >
+                      <span className="text-xs">{formatMessageTime(msg.timestamp)}</span>
+                      {isOwn && getMessageStatusIcon(msg)}
                     </div>
                   </div>
                 </div>
@@ -253,35 +196,32 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
           </div>
         )}
 
-        {/* Scroll to bottom button - Only show when user is not at bottom */}
+        {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
             onClick={() => scrollToBottom('smooth')}
             className="sticky bottom-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white p-3 rounded-full shadow-lg hover:bg-green-600 transition-colors z-20"
-            title="Scroll to bottom"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
+            ↓
           </button>
         )}
       </div>
 
-      {/* Message Input - Fixed at bottom */}
-      <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0 sticky bottom-0 z-10">
+      {/* Input */}
+      <div className="border-t border-gray-200 bg-white p-4 sticky bottom-0 z-10">
         <form onSubmit={handleSendMessage} className="flex space-x-4">
           <input
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none"
             disabled={loading}
           />
           <button
             type="submit"
             disabled={!newMessage.trim() || loading}
-            className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 focus:ring-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
