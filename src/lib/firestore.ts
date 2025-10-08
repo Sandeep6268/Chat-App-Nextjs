@@ -4,20 +4,14 @@ import {
   doc, 
   addDoc, 
   updateDoc, 
-  deleteDoc, 
   getDoc, 
   getDocs, 
   query, 
   where, 
-  orderBy, 
-  limit,
+  orderBy,
   onSnapshot,
   serverTimestamp,
   setDoc,
-  Timestamp,
-  DocumentData,
-  QuerySnapshot,
-  DocumentSnapshot,
   writeBatch
 } from 'firebase/firestore';
 import { firestore } from './firebase';
@@ -39,11 +33,7 @@ export const createUserProfile = async (user: User) => {
     const userRef = doc(firestore, 'users', user.uid);
     const userSnap = await getDoc(userRef);
     
-    //console.log('Checking if user exists:', user.uid, 'Exists:', userSnap.exists());
-    
     if (!userSnap.exists()) {
-      //console.log('Creating new user profile:', user.uid);
-      // Use setDoc instead of updateDoc for new documents
       await setDoc(userRef, {
         uid: user.uid,
         email: user.email,
@@ -54,9 +44,7 @@ export const createUserProfile = async (user: User) => {
         lastSeen: serverTimestamp(),
         isOnline: true,
       });
-      //console.log('User profile created successfully');
     } else {
-      //console.log('User already exists, updating profile');
       await updateDoc(userRef, {
         lastSeen: serverTimestamp(),
         isOnline: true,
@@ -83,30 +71,27 @@ export const updateUserProfile = async (userId: string, updates: Partial<User>) 
   }
 };
 
-// Chat operations - IMPROVED WITH EXISTING CHAT DETECTION
-export const createChat = async (participants: string[], isGroup: boolean = false, groupName?: string) => {
+// Chat operations - ONE-TO-ONE ONLY
+export const createChat = async (participants: string[]) => {
   try {
-    //console.log('🔧 Creating chat with participants:', participants);
-    
     // Sort participants to ensure consistent chat ID generation
     const sortedParticipants = [...participants].sort();
     
-    // Check if chat already exists between these exact users
+    // Check if chat already exists between these exact users (one-to-one only)
     const existingChatsQuery = query(
       chatsCollection,
       where('participants', 'array-contains', sortedParticipants[0])
     );
     
     const existingChatsSnapshot = await getDocs(existingChatsQuery);
-    //console.log('📋 Checking existing chats...');
     
-    let existingChat: DocumentSnapshot | null = null;
+    let existingChat: any = null;
     
     existingChatsSnapshot.forEach((doc) => {
       const chatData = doc.data();
       const chatParticipants = chatData.participants || [];
       
-      // Check if both participants arrays have the same users (regardless of order)
+      // Check if both participants arrays have the same users (one-to-one only)
       const hasAllParticipants = sortedParticipants.every(pid => 
         chatParticipants.includes(pid)
       );
@@ -114,30 +99,22 @@ export const createChat = async (participants: string[], isGroup: boolean = fals
       
       if (hasAllParticipants && sameLength) {
         existingChat = doc;
-        //console.log('✅ Found existing chat:', doc.id, 'with participants:', chatParticipants);
       }
     });
     
     if (existingChat) {
-      //console.log('🎯 Using existing chat:', existingChat.id);
       return doc(firestore, 'chats', existingChat.id);
     }
 
-    //console.log('🆕 Creating NEW chat for participants:', sortedParticipants);
-    
-    const chatData: any = {
+    // Create new one-to-one chat
+    const chatData = {
       participants: sortedParticipants,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      isGroup,
+      isGroup: false, // Always false for one-to-one
     };
 
-    if (isGroup && groupName) {
-      chatData.groupName = groupName;
-    }
-
     const chatRef = await addDoc(chatsCollection, chatData);
-    //console.log('✅ NEW Chat created with ID:', chatRef.id, 'Participants:', sortedParticipants);
     
     // Create userChat entries for each participant
     for (const participantId of sortedParticipants) {
@@ -149,7 +126,6 @@ export const createChat = async (participants: string[], isGroup: boolean = fals
         muted: false,
         archived: false,
       });
-      //console.log(`✅ User chat created for: ${participantId}`);
     }
     
     return chatRef;
@@ -175,10 +151,9 @@ export const getChat = async (chatId: string) => {
   }
 };
 
+// IMPROVED: Better message read marking for one-to-one chats
 export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
   try {
-    //console.log('🔄 markAllMessagesAsRead called for chat:', chatId, 'user:', userId);
-    
     const messagesRef = messagesCollection(chatId);
     const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
     const snapshot = await getDocs(messagesQuery);
@@ -192,56 +167,49 @@ export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
     const chatData = chatSnap.data() as Chat;
     const participants = chatData.participants || [];
     
-    // ✅ FIX: Use different variable name to avoid conflict with 'doc' function
+    // For one-to-one chat, there should be exactly 2 participants
+    const otherParticipant = participants.find(pid => pid !== userId);
+    
     for (const messageDoc of snapshot.docs) {
       const messageData = messageDoc.data();
       const readBy = messageData.readBy || [];
       const sender = messageData.sender || messageData.senderId;
       
-      // Only mark messages from other users as read
+      // Only mark messages from other user as read
       if (!readBy.includes(userId) && sender !== userId) {
         markedCount++;
         
-        // ✅ FIX: Use messageDoc.id instead of doc.id
         const messageRef = doc(firestore, 'chats', chatId, 'messages', messageDoc.id);
         const newReadBy = [...readBy, userId];
         
-        // Calculate if message is read by all participants
-        const otherParticipants = participants.filter(pid => pid !== sender);
-        const isReadByAll = newReadBy.length >= otherParticipants.length + 1; // +1 for sender
+        // For one-to-one: message is read when the other participant reads it
+        const isReadByOther = newReadBy.includes(otherParticipant || '');
         
         batch.update(messageRef, {
           readBy: newReadBy,
           read: true,
-          status: isReadByAll ? 'read' : 'delivered'
+          status: isReadByOther ? 'read' : 'delivered'
         });
-        
-        //console.log(`✅ Marking message ${messageDoc.id} as read`);
       }
     }
     
     if (markedCount > 0) {
       await batch.commit();
-      //console.log(`🎯 Successfully marked ${markedCount} messages as read using batch`);
       
-      // Update last message status in chat
-      if (chatData.lastMessageSender && chatData.lastMessageSender !== userId) {
-        await updateDoc(chatRef, {
-          lastMessageStatus: 'read',
-          updatedAt: serverTimestamp()
-        });
-      }
-    } else {
-      //console.log('ℹ️ No messages to mark as read');
+      // Update chat's last message status
+      await updateDoc(chatRef, {
+        lastMessageStatus: 'read',
+        updatedAt: serverTimestamp()
+      });
     }
     
   } catch (error) {
-    console.error('❌ Error in markAllMessagesAsRead:', error);
+    console.error('Error in markAllMessagesAsRead:', error);
     throw error;
   }
 };
 
-// FIXED: Improved calculateUnreadCount for better accuracy
+// Calculate unread count for one-to-one chat
 export const calculateUnreadCount = async (chatId: string, userId: string): Promise<number> => {
   try {
     const messagesRef = messagesCollection(chatId);
@@ -250,19 +218,17 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
     const snapshot = await getDocs(messagesQuery);
     let unreadCount = 0;
     
-    // ✅ FIX: Use different variable name
     snapshot.docs.forEach(messageDoc => {
       const messageData = messageDoc.data();
       const readBy = messageData.readBy || [];
       const sender = messageData.sender || messageData.senderId;
       
-      // Count only messages from other users that are unread
+      // Count only messages from other user that are unread
       if (sender !== userId && !readBy.includes(userId)) {
         unreadCount++;
       }
     });
     
-    //console.log(`📊 Unread count for chat ${chatId}: ${unreadCount}`);
     return unreadCount;
   } catch (error) {
     console.error('Error calculating unread count:', error);
@@ -270,22 +236,23 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
   }
 };
 
-// FIXED: Update getUserChats to handle index error temporarily
+// Get user chats (one-to-one only)
 export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) => {
-  // TEMPORARY FIX: Remove orderBy to avoid index requirement until composite index is created
   const q = query(
     chatsCollection,
     where('participants', 'array-contains', userId)
-    // Comment out orderBy until composite index is created in Firebase Console
-    // orderBy('lastMessageTimestamp', 'desc')
   );
   
   return onSnapshot(q, async (snapshot) => {
-    //console.log('🔄 getUserChats snapshot received:', snapshot.size, 'chats');
-    
     const chatsPromises = snapshot.docs.map(async (chatDoc) => {
       try {
         const chatData = chatDoc.data();
+        
+        // Skip group chats (though we're not creating them)
+        if (chatData.isGroup) {
+          return null;
+        }
+        
         const unreadCount = await calculateUnreadCount(chatDoc.id, userId);
         
         const chat = {
@@ -294,60 +261,36 @@ export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) 
           unreadCount
         } as Chat;
         
-        
-        
         return chat;
       } catch (error) {
         console.error('Error processing chat:', chatDoc.id, error);
-        return {
-          id: chatDoc.id,
-          ...chatDoc.data(),
-          unreadCount: 0
-        } as Chat;
+        return null;
       }
     });
     
     try {
       let chats = await Promise.all(chatsPromises);
       
-      // Manual client-side sorting as temporary solution
+      // Filter out null values and sort by timestamp
+      chats = chats.filter(chat => chat !== null) as Chat[];
+      
       chats = chats.sort((a, b) => {
         const timeA = a.lastMessageTimestamp?.toDate().getTime() || a.createdAt?.toDate().getTime() || 0;
         const timeB = b.lastMessageTimestamp?.toDate().getTime() || b.createdAt?.toDate().getTime() || 0;
-        return timeB - timeA; // Descending order (newest first)
+        return timeB - timeA;
       });
       
-      //console.log('🎯 All chats processed:', chats.length);
       callback(chats);
     } catch (error) {
       console.error('Error processing chats:', error);
       callback([]);
     }
   }, (error) => {
-    console.error('❌ getUserChats listener error:', error);
-    // If there's an error, try with a simpler query
-    if (error.code === 'failed-precondition') {
-      //console.log('🔄 Falling back to simpler query without ordering...');
-      const fallbackQuery = query(
-        chatsCollection,
-        where('participants', 'array-contains', userId)
-      );
-      
-      return onSnapshot(fallbackQuery, async (snapshot) => {
-        const chats = snapshot.docs.map(chatDoc => ({
-          id: chatDoc.id,
-          ...chatDoc.data(),
-          unreadCount: 0
-        } as Chat));
-        
-        //console.log('🔄 Fallback query successful, chats loaded:', chats.length);
-        callback(chats);
-      });
-    }
+    console.error('getUserChats listener error:', error);
   });
 };
 
-// Message operations - UPDATED WITH READ RECEIPTS
+// Message operations - SIMPLIFIED FOR ONE-TO-ONE
 export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 'timestamp' | 'status'>) => {
   try {
     const messagesRef = messagesCollection(chatId);
@@ -360,18 +303,16 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
     const messageData = {
       text: message.text,
       sender: message.senderId,
-      senderName: 'User',
       timestamp: serverTimestamp(),
       read: false,
       readBy: [message.senderId], // Sender automatically reads their own message
-      deliveredTo: [message.senderId], // Sender automatically receives their own message
       status: 'sent', // Initial status
       type: 'text',
     };
     
     const messageRef = await addDoc(messagesRef, messageData);
     
-    // Update chat's last message with status
+    // Update chat's last message
     await updateDoc(chatRef, {
       lastMessage: message.text,
       lastMessageTimestamp: serverTimestamp(),
@@ -380,111 +321,9 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
       updatedAt: serverTimestamp(),
     });
     
-    //console.log('✅ Message sent with ID:', messageRef.id, 'Status: sent');
-    
-    // Mark as delivered to other participants (simulate delivery)
-    setTimeout(async () => {
-      try {
-        await markMessageAsDelivered(chatId, messageRef.id, chatData.participants || []);
-      } catch (error) {
-        console.error('Error marking message as delivered:', error);
-      }
-    }, 1000);
-    
     return messageRef;
   } catch (error) {
     console.error('Error sending message:', error);
-    throw error;
-  }
-};
-
-// Mark message as delivered to all participants
-export const markMessageAsDelivered = async (chatId: string, messageId: string, participants: string[]) => {
-  try {
-    const messageRef = doc(firestore, 'chats', chatId, 'messages', messageId);
-    const messageSnap = await getDoc(messageRef);
-    
-    if (messageSnap.exists()) {
-      const messageData = messageSnap.data();
-      const deliveredTo = messageData.deliveredTo || [];
-      
-      // Add all participants to delivered list
-      const newDeliveredTo = [...new Set([...deliveredTo, ...participants])];
-      
-      // Calculate if message is delivered to all participants
-      const isDeliveredToAll = newDeliveredTo.length === participants.length;
-      
-      await updateDoc(messageRef, {
-        deliveredTo: newDeliveredTo,
-        status: isDeliveredToAll ? 'delivered' : 'sent'
-      });
-      
-      //console.log('📨 Message marked as delivered to:', newDeliveredTo, 'Status:', isDeliveredToAll ? 'delivered' : 'sent');
-      
-      // Update chat's last message status if this is the last message
-      const chatRef = doc(firestore, 'chats', chatId);
-      const chatSnap = await getDoc(chatRef);
-      const chatData = chatSnap.data() as Chat;
-      
-      if (messageId === chatData.lastMessageSender) {
-        await updateDoc(chatRef, {
-          lastMessageStatus: isDeliveredToAll ? 'delivered' : 'sent'
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Error marking message as delivered:', error);
-    throw error;
-  }
-};
-
-// ✅ UPDATED: Improved markMessageAsRead for better real-time updates
-export const markMessageAsRead = async (chatId: string, messageId: string, userId: string) => {
-  try {
-    const messageRef = doc(firestore, 'chats', chatId, 'messages', messageId);
-    const messageSnap = await getDoc(messageRef);
-    
-    if (messageSnap.exists()) {
-      const messageData = messageSnap.data();
-      const readBy = messageData.readBy || [];
-      
-      if (!readBy.includes(userId)) {
-        const newReadBy = [...readBy, userId];
-        
-        // Get chat to know total participants
-        const chatRef = doc(firestore, 'chats', chatId);
-        const chatSnap = await getDoc(chatRef);
-        const chatData = chatSnap.data() as Chat;
-        const participants = chatData.participants || [];
-        
-        // Calculate if message is read by all participants (excluding sender)
-        const otherParticipants = participants.filter(pid => pid !== messageData.sender);
-        const isReadByAll = newReadBy.length >= otherParticipants.length + 1; // +1 for sender
-        
-        // Update message status immediately
-        await updateDoc(messageRef, {
-          readBy: newReadBy,
-          read: true,
-          status: isReadByAll ? 'read' : 'delivered'
-        });
-        
-        //console.log('👀 Message marked as read by:', userId, 'Status:', isReadByAll ? 'read' : 'delivered');
-        
-        // Update chat's last message status if this is the last message
-        const chatDoc = await getDoc(chatRef);
-        const currentChatData = chatDoc.data() as Chat;
-        
-        if (currentChatData.lastMessageSender === messageData.sender && 
-            messageId === currentChatData.lastMessageSender) {
-          await updateDoc(chatRef, {
-            lastMessageStatus: isReadByAll ? 'read' : 'delivered',
-            updatedAt: serverTimestamp()
-          });
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error marking message as read:', error);
     throw error;
   }
 };
@@ -505,14 +344,10 @@ export const getMessages = (chatId: string, callback: (messages: Message[]) => v
         timestamp: data.timestamp,
         read: data.read || false,
         readBy: data.readBy || [],
-        deliveredTo: data.deliveredTo || [],
         status: data.status || 'sent',
         type: data.type || 'text',
-        senderName: data.senderName,
       } as Message;
     });
-    
-    
     
     callback(messages);
   });

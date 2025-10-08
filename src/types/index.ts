@@ -37,14 +37,11 @@ export interface Chat {
   lastMessageTimestamp?: Timestamp;
   lastMessageSender?: string;
   lastMessageStatus?: 'sent' | 'delivered' | 'read'; // Chat-level status
-  unreadCount?: number; // ✅ NEW: Unread message count
+  unreadCount?: number; // Unread message count
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  // For group chats
-  isGroup?: boolean;
-  groupName?: string;
-  groupPhotoURL?: string;
-  admin?: string;
+  // Remove group chat properties since we only want one-to-one
+  isGroup?: boolean; // Keep but always false
 }
 
 export interface UserChat {

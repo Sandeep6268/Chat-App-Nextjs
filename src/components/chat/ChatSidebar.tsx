@@ -108,7 +108,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     };
   }, [user, currentChatId]);
 
-  // Function to create new chat
+  // Function to create new chat (one-to-one only)
   const createNewChat = async (otherUserId: string) => {
     if (!user) return;
 
@@ -117,11 +117,8 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
       
       const { createChat } = await import('@/lib/firestore');
       
-      // Find the other user's details
-      const otherUser = availableUsers.find(u => u.uid === otherUserId);
-      
-      // Create or find existing chat
-      const chatRef = await createChat([user.uid, otherUserId], false);
+      // Create one-to-one chat
+      const chatRef = await createChat([user.uid, otherUserId]);
       
       // Close modal after creating chat
       setShowNewChatModal(false);
@@ -158,7 +155,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 
-  // Get other user's info from chat
+  // Get other user's info from chat (one-to-one only)
   const getOtherUserInfo = (chat: Chat) => {
     if (!user) return { name: 'Unknown User', email: '', photoURL: null };
     
@@ -169,35 +166,17 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
     
     // For one-on-one chats, get the other user
-    if (!chat.isGroup && otherParticipants.length === 1) {
-      const otherUserId = otherParticipants[0];
-      const otherUser = availableUsers.find(u => u.uid === otherUserId);
-      
-      if (!otherUser) {
-        return { name: 'Unknown User', email: '', photoURL: null };
-      }
-      
-      return {
-        name: otherUser.displayName || otherUser.email || 'Unknown User',
-        email: otherUser.email || '',
-        photoURL: otherUser.photoURL
-      };
+    const otherUserId = otherParticipants[0];
+    const otherUser = availableUsers.find(u => u.uid === otherUserId);
+    
+    if (!otherUser) {
+      return { name: 'Unknown User', email: '', photoURL: null };
     }
     
-    // For group chats
-    if (chat.isGroup) {
-      return {
-        name: chat.groupName || `Group (${otherParticipants.length + 1} members)`,
-        email: 'Group Chat',
-        photoURL: null
-      };
-    }
-    
-    // Fallback
     return {
-      name: `Chat with ${otherParticipants.length} users`,
-      email: 'Multiple users',
-      photoURL: null
+      name: otherUser.displayName || otherUser.email || 'Unknown User',
+      email: otherUser.email || '',
+      photoURL: otherUser.photoURL
     };
   };
 
