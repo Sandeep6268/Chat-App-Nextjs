@@ -157,44 +157,43 @@ export async function POST(request: NextRequest) {
         message: 'Push notification sent successfully'
       });
 
-    } catch (fcmError: any) {
-      console.error('❌ FCM send error:', {
-        code: fcmError.code,
-        message: fcmError.message
-      });
-      
-      let errorMessage = 'Failed to send push notification';
-      let statusCode = 500;
+    }  catch (fcmError: any) {
+  console.error('❌ FCM send error:', {
+    code: fcmError.code,
+    message: fcmError.message
+  });
+  
+  let errorMessage = 'Failed to send push notification';
+  let statusCode = 500;
 
-      if (fcmError.code) {
-        switch (fcmError.code) {
-          case 'messaging/invalid-argument':
-            errorMessage = 'Invalid FCM token. The token might be malformed or expired.';
-            statusCode = 400;
-            break;
-          case 'messaging/registration-token-not-registered':
-            errorMessage = 'FCM token is no longer valid. Please generate a new token.';
-            statusCode = 410;
-            break;
-          case 'messaging/invalid-registration-token':
-            errorMessage = 'Invalid registration token format.';
-            statusCode = 400;
-            break;
-          default:
-            errorMessage = `FCM Error: ${fcmError.code}`;
-        }
-      }
-
-      return NextResponse.json(
-        { 
-          success: false,
-          error: errorMessage,
-          code: fcmError.code,
-          action: 'Please refresh your FCM token and try again.'
-        },
-        { status: statusCode }
-      );
+  if (fcmError.code) {
+    switch (fcmError.code) {
+      case 'messaging/invalid-argument':
+        errorMessage = 'Invalid FCM token.';
+        statusCode = 400;
+        break;
+      case 'messaging/registration-token-not-registered':
+        errorMessage = 'FCM token is no longer valid.';
+        statusCode = 410; // Use 410 Gone for expired tokens
+        break;
+      case 'messaging/invalid-registration-token':
+        errorMessage = 'Invalid registration token.';
+        statusCode = 400;
+        break;
+      default:
+        errorMessage = `FCM Error: ${fcmError.code}`;
     }
+  }
+
+  return NextResponse.json(
+    { 
+      success: false,
+      error: errorMessage,
+      code: fcmError.code,
+    },
+    { status: statusCode }
+  );
+}
 
   } catch (error: any) {
     console.error('❌ Unexpected error in push notification API:', error);

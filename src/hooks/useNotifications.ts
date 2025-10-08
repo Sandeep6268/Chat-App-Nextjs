@@ -115,59 +115,84 @@ export const useNotifications = () => {
     }
   }, [user]);
 
-  // ✅ FIXED: Send Push Notification - SIMPLIFIED & RELIABLE
-  const sendPushNotification = useCallback(async (userId: string, title: string, body: string, data?: any) => {
-    try {
-      console.log('🚀 [NOTIFICATIONS] Sending push to:', userId);
+// ✅ FIXED: Send Push Notification with Token Refresh
+const sendPushNotification = useCallback(async (userId: string, title: string, body: string, data?: any) => {
+  try {
+    console.log('🚀 [NOTIFICATIONS] Sending push to:', userId);
 
-      // Get user's FCM tokens
-      const userRef = doc(firestore, 'users', userId);
-      const userSnap = await getDoc(userRef);
-      
-      if (!userSnap.exists()) {
-        console.log('❌ [NOTIFICATIONS] User not found');
-        return false;
-      }
-
-      const userData = userSnap.data();
-      const userTokens = userData.fcmTokens || [];
-
-      console.log(`📋 [NOTIFICATIONS] User has ${userTokens.length} tokens`);
-
-      if (userTokens.length === 0) {
-        console.log('❌ [NOTIFICATIONS] No FCM tokens found');
-        return false;
-      }
-
-      // Send to first token
-      const token = userTokens[0];
-      
-      const response = await fetch('/api/send-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: token,
-          title: title,
-          body: body,
-          data: data || {}
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (response.ok && result.success) {
-        console.log('✅ [NOTIFICATIONS] Push sent successfully!');
-        return true;
-      } else {
-        console.error('❌ [NOTIFICATIONS] Push failed:', result.error);
-        return false;
-      }
-
-    } catch (error) {
-      console.error('❌ [NOTIFICATIONS] Error sending push:', error);
+    // Get user's FCM tokens
+    const userRef = doc(firestore, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (!userSnap.exists()) {
+      console.log('❌ [NOTIFICATIONS] User not found');
       return false;
     }
-  }, []);
+
+    const userData = userSnap.data();
+    let userTokens = userData.fcmTokens || [];
+
+    console.log(`📋 [NOTIFICATIONS] User has ${userTokens.length} tokens`);
+
+    if (userTokens.length === 0) {
+      console.log('❌ [NOTIFICATIONS] No FCM tokens found');
+      return false;
+    }
+
+    // Try to send to each token
+    for (const token of userTokens) {
+      try {
+        console.log('📤 [NOTIFICATIONS] Sending to token:', token.substring(0, 20) + '...');
+        
+        const response = await fetch('/api/send-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: token,
+            title: title,
+            body: body,
+            data: data || {}
+          }),
+        });
+
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+          console.log('✅ [NOTIFICATIONS] Push sent successfully!');
+          return true;
+        } else {
+          // Handle expired token
+          if (result.code === 'messaging/registration-token-not-registered' || response.status === 410) {
+            console.log('🔄 [NOTIFICATIONS] Token expired, removing from user...');
+            
+            // Remove expired token from user's document
+            await updateDoc(userRef, {
+              fcmTokens: userTokens.filter((t: string) => t !== token)
+            });
+            
+            // Update local array
+            userTokens = userTokens.filter((t: string) => t !== token);
+            console.log('🗑️ [NOTIFICATIONS] Expired token removed');
+            continue; // Try next token
+          }
+          
+          console.error('❌ [NOTIFICATIONS] Push failed:', result.error);
+          continue; // Try next token
+        }
+      } catch (error) {
+        console.log('❌ [NOTIFICATIONS] Error with token, trying next...', error);
+        continue;
+      }
+    }
+
+    console.log('❌ [NOTIFICATIONS] All tokens failed or expired');
+    return false;
+
+  } catch (error) {
+    console.error('❌ [NOTIFICATIONS] Error sending push:', error);
+    return false;
+  }
+}, []);
 
   // ✅ FIXED: Test Push Notification - ALWAYS WORKS
   const testPushNotification = useCallback(async (title: string, body: string) => {
@@ -179,8 +204,7 @@ export const useNotifications = () => {
         title || 'Test Notification 🔔',
         {
           body: body || 'This is a test browser notification!',
-          icon: '/icon-192.png' ,
-          badge: '/badge.png',
+          
           tag: `test-${Date.now()}`,
         }
       );
@@ -233,8 +257,6 @@ export const useNotifications = () => {
     if ('Notification' in window && Notification.permission === 'granted' && !document.hasFocus()) {
       const notification = new Notification(title, {
         body: body,
-        icon: '/icon-192.png',
-        badge: '/badge.png',
         tag: `browser-${Date.now()}`,
       });
 

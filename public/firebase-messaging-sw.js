@@ -23,8 +23,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new message',
-    icon: '/icon-192.png'|| null,
-    badge: '/badge.png'|| null,
+    
     tag: 'chat-message',
     data: payload.data || {},
   };
@@ -50,8 +49,7 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.notification?.body || 'You have a new message',
-    icon: '/icon-192.png',
-    badge: '/badge.png',
+    
     tag: `push-${Date.now()}`,
     data: data.data || {},
   };
