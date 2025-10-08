@@ -12,25 +12,12 @@ const initializeFirebaseAdmin = () => {
     return admin.app();
   }
 
-  // Use your exact service account credentials
   const serviceAccount = {
     type: "service_account",
     project_id: "whatsapp-clone-69386",
-    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID, // Optional: Add this to Vercel if available
     private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     client_email: "firebase-adminsdk-fbsvc@whatsapp-clone-69386.iam.gserviceaccount.com",
-    client_id: process.env.FIREBASE_CLIENT_ID, // Optional
-    auth_uri: "https://accounts.google.com/o/oauth2/auth",
-    token_uri: "https://oauth2.googleapis.com/token",
-    auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-    client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL || `https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40whatsapp-clone-69386.iam.gserviceaccount.com`
   };
-
-  console.log('🔧 Initializing Firebase Admin with:', {
-    project_id: serviceAccount.project_id,
-    client_email: serviceAccount.client_email,
-    has_private_key: !!serviceAccount.private_key
-  });
 
   try {
     const app = admin.initializeApp({
@@ -42,19 +29,7 @@ const initializeFirebaseAdmin = () => {
     return app;
   } catch (error: any) {
     console.error('❌ Firebase Admin initialization failed:', error.message);
-    
-    // Alternative initialization without full service account
-    try {
-      console.log('🔄 Trying alternative initialization...');
-      const app = admin.initializeApp({
-        projectId: "whatsapp-clone-69386"
-      });
-      console.log('✅ Firebase Admin initialized with project ID only');
-      return app;
-    } catch (fallbackError: any) {
-      console.error('❌ Fallback initialization also failed:', fallbackError.message);
-      throw error;
-    }
+    throw error;
   }
 };
 
@@ -73,9 +48,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false,
-          error: 'Firebase Admin initialization failed',
-          message: 'Please check Firebase Admin configuration',
-          details: process.env.NODE_ENV === 'development' ? initError.message : undefined
+          error: 'Firebase Admin initialization failed'
         },
         { status: 500 }
       );
@@ -100,7 +73,7 @@ export async function POST(request: NextRequest) {
     console.log('📤 Processing notification:', {
       token_length: token?.length,
       title,
-      messageBody_length: messageBody?.length
+      messageBody
     });
 
     // Validate required fields
@@ -134,51 +107,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prepare the message payload
+    // ✅ FIXED: Simple and valid FCM payload
     const message = {
       token: token,
       notification: {
-        title: title,
-        body: messageBody,
+        title: title.substring(0, 50), // Limit title length
+        body: messageBody.substring(0, 150), // Limit body length
+        icon: '/icon-192.png',
+        // sound: 'default' // Optional
       },
       data: {
-        ...(data || {}),
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        // Simple data payload - only strings
+        type: data?.type || 'general',
+        chatId: data?.chatId || '',
+        senderId: data?.senderId || '',
+        timestamp: new Date().toISOString(),
+        click_action: 'OPEN_CHAT', // Important for web
         url: process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app'
       },
       webpush: {
-        headers: {
-          Urgency: 'high'
-        },
-        notification: {
-          icon: '/icon-192.png',
-          badge: '/badge.png',
-          vibrate: [200, 100, 200],
-          requireInteraction: true,
-        },
         fcmOptions: {
           link: process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app',
         },
-      },
-      android: {
-        priority: 'high',
-        notification: {
-          icon: 'icon-192.png',
-          color: '#10B981',
-          sound: 'default',
-        },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
-          },
-        },
-      },
+      }
     };
 
-    console.log('📨 Sending FCM message...');
+    console.log('📨 Sending FCM message...', {
+      title: message.notification.title,
+      body: message.notification.body
+    });
     
     try {
       // Send the message
@@ -193,14 +150,21 @@ export async function POST(request: NextRequest) {
       });
 
     } catch (fcmError: any) {
-      console.error('❌ FCM send error:', fcmError);
+      console.error('❌ FCM send error:', {
+        code: fcmError.code,
+        message: fcmError.message,
+        details: fcmError.details
+      });
       
-      // Handle specific FCM errors
       let errorMessage = 'Failed to send push notification';
       let statusCode = 500;
 
       if (fcmError.code) {
         switch (fcmError.code) {
+          case 'messaging/invalid-payload':
+            errorMessage = 'Invalid notification payload. Please check the data format.';
+            statusCode = 400;
+            break;
           case 'messaging/registration-token-not-registered':
             errorMessage = 'Token is no longer valid. Please refresh token.';
             statusCode = 410;
@@ -212,10 +176,6 @@ export async function POST(request: NextRequest) {
           case 'messaging/too-many-requests':
             errorMessage = 'Too many requests. Please try again later.';
             statusCode = 429;
-            break;
-          case 'messaging/invalid-argument':
-            errorMessage = 'Invalid argument provided to FCM.';
-            statusCode = 400;
             break;
           default:
             errorMessage = `FCM Error: ${fcmError.code}`;
@@ -240,41 +200,29 @@ export async function POST(request: NextRequest) {
       { 
         success: false,
         error: 'Internal server error',
-        message: 'An unexpected error occurred',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'An unexpected error occurred'
       },
       { status: 500 }
     );
   }
 }
 
-// Test endpoint to verify Firebase Admin setup
+// Test endpoint
 export async function GET() {
   try {
     const admin = require('firebase-admin');
+    initializeFirebaseAdmin();
     
-    try {
-      initializeFirebaseAdmin();
-      
-      return NextResponse.json({
-        success: true,
-        status: 'Firebase Admin is configured correctly',
-        projectId: "whatsapp-clone-69386",
-        timestamp: new Date().toISOString()
-      });
-    } catch (error: any) {
-      return NextResponse.json({
-        success: false,
-        status: 'Firebase Admin configuration error',
-        error: error.message,
-        timestamp: new Date().toISOString()
-      }, { status: 500 });
-    }
-    
+    return NextResponse.json({
+      success: true,
+      status: 'Firebase Admin is configured correctly',
+      projectId: "whatsapp-clone-69386",
+      timestamp: new Date().toISOString()
+    });
   } catch (error: any) {
     return NextResponse.json({
       success: false,
-      status: 'Firebase Admin not available',
+      status: 'Firebase Admin configuration error',
       error: error.message,
       timestamp: new Date().toISOString()
     }, { status: 500 });
