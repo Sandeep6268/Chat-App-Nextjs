@@ -18,7 +18,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const { user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-const { sendPushNotification } = useNotifications();
+const { sendPushNotification,showBrowserNotification } = useNotifications();
 
   
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
@@ -75,81 +75,54 @@ useEffect(() => {
         const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
         const previousTotal = previousTotalUnreadRef.current;
         
-        console.log('📊 [SIDEBAR] Unread count:', {
+        console.log('📊 [SIDEBAR] Unread:', {
           previous: previousTotal,
           current: totalUnreadMessages,
           change: totalUnreadMessages - previousTotal
         });
         
-        // ✅ SIMPLE & RELIABLE: Show browser notification for EVERY unread increase
+        // ✅ SIMPLE & EFFECTIVE: Show notification for EVERY unread increase
         if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
           const newUnreadCount = totalUnreadMessages - previousTotal;
-          const chatsWithUnread = userChats.filter(chat => (chat.unreadCount || 0) > 0);
           
-          console.log('🔔 [SIDEBAR] Unread increased, showing notification...', {
-            newMessages: newUnreadCount,
-            totalUnread: totalUnreadMessages
-          });
+          console.log('🔔 [SIDEBAR] Unread increased:', newUnreadCount);
 
-          // Show browser notification (ALWAYS works if permission granted)
-          if ('Notification' in window && Notification.permission === 'granted' && !document.hasFocus()) {
-            const notification = new Notification(
-              newUnreadCount === 1 ? '1 New Message 💬' : `${newUnreadCount} New Messages 💬`,
-              {
-                body: `You have ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''}`,
-                icon: '/icon-192.png',
-                badge: '/badge.png',
-                tag: `unread-${Date.now()}`,
-                requireInteraction: true,
-              }
-            );
+          // 1. Show browser notification (INSTANT)
+          showBrowserNotification(
+            newUnreadCount === 1 ? '1 New Message 💬' : `${newUnreadCount} New Messages 💬`,
+            `Total: ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''}`
+          );
 
-            notification.onclick = () => {
-              window.focus();
-              notification.close();
-            };
-
-            console.log('✅ [SIDEBAR] Browser notification shown for unread messages');
-          }
-          
-          // Also try to send push notifications for important chats
-          if (newUnreadCount > 0) {
-            userChats.forEach(chat => {
-              const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
-              const previousUnread = previousChat?.unreadCount || 0;
-              const currentUnread = chat.unreadCount || 0;
+          // 2. Send push notifications for each chat with new messages
+          userChats.forEach(chat => {
+            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
+            const previousUnread = previousChat?.unreadCount || 0;
+            const currentUnread = chat.unreadCount || 0;
+            
+            if (currentUnread > previousUnread) {
+              const otherUserInfo = getOtherUserInfo(chat);
+              const newMessages = currentUnread - previousUnread;
               
-              if (currentUnread > previousUnread) {
-                const otherUserInfo = getOtherUserInfo(chat);
-                const newMessages = currentUnread - previousUnread;
+              if (newMessages > 0 && otherUserInfo.uid) {
+                console.log(`💬 [SIDEBAR] New messages from ${otherUserInfo.name}`);
                 
-                if (newMessages > 0 && otherUserInfo.uid) {
-                  console.log(`💬 [SIDEBAR] New messages from ${otherUserInfo.name}:`, newMessages);
-                  
-                  // Send push notification (this will try FCM)
-                  sendPushNotification(
-                    otherUserInfo.uid,
-                    `💬 ${otherUserInfo.name}`,
-                    `Sent you ${newMessages} new message${newMessages > 1 ? 's' : ''}`,
-                    {
-                      chatId: chat.id,
-                      senderId: user.uid,
-                      type: 'new_message'
-                    }
-                  ).then(success => {
-                    if (success) {
-                      console.log(`✅ [SIDEBAR] Push notification sent to ${otherUserInfo.name}`);
-                    } else {
-                      console.log(`❌ [SIDEBAR] Failed to send push to ${otherUserInfo.name}`);
-                    }
-                  });
-                }
+                // Send push notification
+                sendPushNotification(
+                  otherUserInfo.uid,
+                  `💬 ${otherUserInfo.name}`,
+                  `Sent you ${newMessages} new message${newMessages > 1 ? 's' : ''}`,
+                  {
+                    chatId: chat.id,
+                    senderId: user.uid,
+                    type: 'new_message'
+                  }
+                );
               }
-            });
-          }
+            }
+          });
         }
         
-        // Update refs and state
+        // Update state
         previousTotalUnreadRef.current = totalUnreadMessages;
         previousChatsRef.current = userChats;
         setTotalUnread(totalUnreadMessages);
@@ -184,7 +157,7 @@ useEffect(() => {
       unsubscribeChats();
     }
   };
-}, [user, currentChatId]);
+}, [user, currentChatId, sendPushNotification, showBrowserNotification]);
 
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {
