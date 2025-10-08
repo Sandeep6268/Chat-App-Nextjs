@@ -7,7 +7,9 @@ import { requestNotificationPermission, showBrowserNotification } from '@/lib/fi
 
 export const useNotifications = () => {
   useEffect(() => {
-    // Request notification permission when component mounts
+    // Only initialize notifications in browser environment
+    if (typeof window === 'undefined') return;
+
     const initializeNotifications = async () => {
       try {
         await requestNotificationPermission();
@@ -21,13 +23,18 @@ export const useNotifications = () => {
 
   // ✅ Use useCallback to prevent unnecessary re-renders
   const showNotification = useCallback((title: string, body: string, isImportant = false) => {
-    // Show browser notification if permitted
-    showBrowserNotification(title, body);
+    // Only show notifications in browser environment
+    if (typeof window === 'undefined') return;
+
+    // Show browser notification if permitted (only when document is not focused)
+    if (!document.hasFocus()) {
+      showBrowserNotification(title, body);
+    }
     
-    // Show toast notification
+    // Always show toast notification (works everywhere)
     if (isImportant) {
       toast.success(body, {
-        duration: 6000,
+        duration: 4000,
         position: 'top-right',
         style: {
           background: '#10B981',
@@ -36,7 +43,7 @@ export const useNotifications = () => {
       });
     } else {
       toast.success(body, {
-        duration: 4000,
+        duration: 3000,
         position: 'top-right',
       });
     }
@@ -51,11 +58,11 @@ export const useNotifications = () => {
     showNotification(
       `New message from ${senderName}`,
       message,
-      true // Mark as important
+      true
     );
   }, [showNotification]);
 
-  // ✅ For unread messages when chat opens
+  // For unread messages when chat opens
   const showUnreadMessagesNotification = useCallback((senderName: string, unreadCount: number) => {
     showNotification(
       `Unread messages from ${senderName}`,
@@ -64,7 +71,7 @@ export const useNotifications = () => {
     );
   }, [showNotification]);
 
-  // ✅ NEW: For sidebar unread messages notification
+  // For sidebar unread messages notification
   const showSidebarUnreadNotification = useCallback((totalUnread: number, chatCount: number) => {
     if (totalUnread === 0) return;
 

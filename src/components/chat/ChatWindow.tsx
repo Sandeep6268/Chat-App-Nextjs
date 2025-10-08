@@ -31,41 +31,32 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   // 🔥 Realtime messages with notifications - FIXED VERSION
   useEffect(() => {
-    if (!chatId || !user) return;
+  if (!chatId || !user) return;
 
-    const unsubscribe = getMessages(chatId, (msgs) => {
-      // ✅ Check for unread messages when chat first loads
-      if (msgs.length > 0 && !hasNotifiedUnread && !hasMarkedInitialRead) {
-        const unreadMessages = msgs.filter(
-          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
-        );
-        
-        // Show notification for existing unread messages
-        if (unreadMessages.length > 0 && !isActive) {
-          showUnreadMessagesNotification(participantName, unreadMessages.length);
-          setHasNotifiedUnread(true);
-        }
-      }
-
-      // ✅ Check for new incoming messages
-      if (previousMessagesRef.current.length > 0 && msgs.length > previousMessagesRef.current.length) {
-        const newMessages = msgs.slice(previousMessagesRef.current.length);
-        
-        newMessages.forEach((message) => {
-          // Show notification for new messages from other users
-          if (message.senderId !== user.uid) {
-            const isChatActive = isActive && document.hasFocus();
+  const unsubscribe = getMessages(chatId, (msgs) => {
+    // Check for new messages
+    if (previousMessagesRef.current.length > 0 && msgs.length > previousMessagesRef.current.length) {
+      const newMessages = msgs.slice(previousMessagesRef.current.length);
+      
+      newMessages.forEach((message) => {
+        // Show notification for new messages from other users
+        if (message.senderId !== user.uid) {
+          const isChatActive = isActive && document.hasFocus();
+          
+          // Only show notifications if they can be used
+          if (typeof window !== 'undefined') {
             showNewMessageNotification(
               participantName,
               message.text,
               isChatActive
             );
           }
-        });
-      }
+        }
+      });
+    }
 
-      setMessages(msgs);
-      previousMessagesRef.current = msgs;
+    setMessages(msgs);
+    previousMessagesRef.current = msgs;
 
       // ✅ Mark unread messages as read when chat opens
       if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
