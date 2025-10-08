@@ -11,47 +11,103 @@ const firebaseConfig = {
   appId: "1:580532933743:web:d74eca375178f6a3c2699a"
 };
 
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Background message handler - SIMPLIFIED
+// ✅ FOREGROUND MESSAGE HANDLER - Yeh important hai
 messaging.onBackgroundMessage((payload) => {
   console.log('📱 [SW] Received background message:', payload);
-  
+
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new message',
-    icon: '/icon-192.png',
+    icon: '/icon-192.png', // Make sure this exists
     badge: '/badge.png',
-    data: payload.data || {},
-    // Remove complex options that might cause issues
+    tag: 'chat-message',
+    requireInteraction: true,
+    data: payload.data || {}, // Pass any additional data
+    actions: [
+      {
+        action: 'open',
+        title: 'Open Chat'
+      },
+      {
+        action: 'dismiss',
+        title: 'Dismiss'
+      }
+    ]
   };
 
+  // Show notification
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Notification click handler
+// ✅ NOTIFICATION CLICK HANDLER
 self.addEventListener('notificationclick', (event) => {
   console.log('🔔 [SW] Notification clicked:', event);
   
   event.notification.close();
 
-  const urlToOpen = event.notification.data?.url || '/';
+  if (event.action === 'open' || event.action === '') {
+    // Open the app
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clientList) => {
+          // Check if app is already open
+          for (const client of clientList) {
+            if (client.url.includes('/chat/') && 'focus' in client) {
+              return client.focus();
+            }
+          }
+          // Open new window
+          if (clients.openWindow) {
+            return clients.openWindow('/');
+          }
+        })
+    );
+  }
+});
+
+// ✅ PUSH EVENT HANDLER - Yeh bhi important hai
+self.addEventListener('push', (event) => {
+  console.log('📬 [SW] Push event received:', event);
+  
+  if (!event.data) return;
+
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch (err) {
+    console.error('❌ [SW] Error parsing push data:', err);
+    data = {
+      notification: {
+        title: 'New Message',
+        body: 'You have a new message'
+      }
+    };
+  }
+
+  const options = {
+    body: data.notification?.body || 'You have a new message',
+    icon: '/icon-192.png',
+    badge: '/badge.png',
+    tag: 'chat-message',
+    requireInteraction: true,
+    data: data.data || {},
+    actions: [
+      {
+        action: 'open',
+        title: 'Open Chat'
+      }
+    ]
+  };
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Check if app is already open
-        for (const client of clientList) {
-          if (client.url.includes(urlToOpen) && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        // Open new window
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
+    self.registration.showNotification(
+      data.notification?.title || 'New Message',
+      options
+    )
   );
 });
 
