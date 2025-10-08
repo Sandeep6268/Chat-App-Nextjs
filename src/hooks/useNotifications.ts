@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useCallback, useState } from 'react';
-import { toast } from 'react-hot-toast';
 import { getFCMToken, onForegroundMessage, isFCMSupported, deleteFCMToken } from '@/lib/firebase-messaging';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { useAuth } from '@/components/auth/AuthProvider';
 
@@ -13,68 +12,51 @@ export const useNotifications = () => {
   const [isSupported, setIsSupported] = useState<boolean>(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
 
-  // Check notification permission
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPermission(Notification.permission);
-    }
-  }, []);
-
-  // Initialize FCM with better setup
+  // Initialize FCM
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     const initializeFCM = async () => {
       try {
-        console.log('🔄 Initializing FCM...');
+        console.log('🔄 Initializing FCM for Push Notifications...');
         
-        // Check if FCM is supported
         const supported = await isFCMSupported();
         setIsSupported(supported);
         
         if (!supported) {
-          console.log('🚫 FCM not supported, using fallback notifications');
+          console.log('🚫 FCM not supported');
           return;
         }
 
-        console.log('🔍 FCM supported, proceeding...');
+        setPermission(Notification.permission);
 
-        // Get FCM token
-        const token = await getFCMToken();
-        if (token) {
-          setFcmToken(token);
-          console.log('✅ FCM initialized with token');
-          
-          // Store token in user's document
-          if (user) {
-            try {
-              const userRef = doc(firestore, 'users', user.uid);
-              await updateDoc(userRef, {
-                fcmTokens: arrayUnion(token),
-                notificationEnabled: true,
-                lastFCMUpdate: new Date()
-              });
-              console.log('✅ FCM token stored in user document');
-            } catch (error) {
-              console.error('❌ Error storing FCM token:', error);
+        if (Notification.permission === 'granted') {
+          const token = await getFCMToken();
+          if (token) {
+            setFcmToken(token);
+            console.log('✅ FCM initialized with token');
+            
+            // Store token in user's document
+            if (user) {
+              try {
+                const userRef = doc(firestore, 'users', user.uid);
+                await updateDoc(userRef, {
+                  fcmTokens: arrayUnion(token),
+                  notificationEnabled: true,
+                  lastFCMUpdate: new Date()
+                });
+                console.log('✅ FCM token stored in user document');
+              } catch (error) {
+                console.error('❌ Error storing FCM token:', error);
+              }
             }
           }
-        } else {
-          console.log('❌ Failed to get FCM token');
         }
 
-        // Set up foreground message listener
+        // Foreground message listener
         unsubscribe = await onForegroundMessage((payload) => {
-          console.log('📱 Foreground FCM message received:', payload);
-          
-          // Show toast notification
-          if (payload.notification) {
-            this.showNotification(
-              payload.notification.title || 'New Message',
-              payload.notification.body || 'You have a new message',
-              true
-            );
-          }
+          console.log('📱 Foreground FCM message:', payload);
+          // Service worker background messages handle karega
         });
 
       } catch (error) {
@@ -82,19 +64,16 @@ export const useNotifications = () => {
       }
     };
 
-    // Only initialize if we have permission or can request it
-    if (permission === 'granted' || permission === 'default') {
-      initializeFCM();
-    }
+    initializeFCM();
 
     return () => {
       if (unsubscribe) {
         unsubscribe();
       }
     };
-  }, [user, permission]);
+  }, [user]);
 
-  // Request notification permission
+  // Request Permission
   const requestPermission = useCallback(async (): Promise<boolean> => {
     try {
       if (!('Notification' in window)) {
@@ -106,7 +85,6 @@ export const useNotifications = () => {
       setPermission(result);
       
       if (result === 'granted') {
-        // Reinitialize FCM after permission granted
         const token = await getFCMToken();
         if (token) {
           setFcmToken(token);
@@ -121,75 +99,7 @@ export const useNotifications = () => {
     }
   }, []);
 
-  // Show notification function with fallbacks
-  const showNotification = useCallback((title: string, body: string, isImportant = false) => {
-    // Always show toast as fallback
-    if (isImportant) {
-      toast.success(body, {
-        duration: 4000,
-        position: 'top-right',
-        style: {
-          background: '#10B981',
-          color: '#fff',
-        },
-      });
-    } else {
-      toast.success(body, {
-        duration: 3000,
-        position: 'top-right',
-      });
-    }
-
-    // Try to show browser notification
-    if ('Notification' in window && Notification.permission === 'granted') {
-      // Don't show if tab is active and it's not important
-      if (isImportant || !document.hasFocus()) {
-        const notification = new Notification(title, { 
-          body, 
-          icon: '/icon.png',
-          badge: '/badge.png',
-          tag: 'chat-notification'
-        });
-
-        notification.onclick = () => {
-          window.focus();
-          notification.close();
-        };
-      }
-    }
-  }, []);
-
-  const showNewMessageNotification = useCallback((senderName: string, message: string, isActiveChat: boolean = false) => {
-    if (isActiveChat && document.hasFocus()) {
-      return; // Don't notify for active chat
-    }
-
-    showNotification(
-      `New message from ${senderName}`,
-      message,
-      true
-    );
-  }, [showNotification]);
-
-  const showUnreadMessagesNotification = useCallback((senderName: string, unreadCount: number) => {
-    showNotification(
-      `Unread messages from ${senderName}`,
-      `You have ${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`,
-      true
-    );
-  }, [showNotification]);
-
-  const showSidebarUnreadNotification = useCallback((totalUnread: number, chatCount: number) => {
-    if (totalUnread === 0) return;
-
-    showNotification(
-      'Unread Messages',
-      `You have ${totalUnread} unread message${totalUnread > 1 ? 's' : ''} in ${chatCount} conversation${chatCount > 1 ? 's' : ''}`,
-      true
-    );
-  }, [showNotification]);
-
-  // Disable notifications
+  // Disable Notifications
   const disableNotifications = useCallback(async () => {
     try {
       await deleteFCMToken();
@@ -206,15 +116,107 @@ export const useNotifications = () => {
     }
   }, [user]);
 
+  // ✅ SEND PUSH NOTIFICATION TO USER
+  const sendPushNotification = useCallback(async (userId: string, title: string, body: string, data?: any) => {
+    try {
+      // Get user's FCM token from Firestore
+      const userRef = doc(firestore, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      
+      if (!userSnap.exists()) {
+        console.log('❌ User not found:', userId);
+        return false;
+      }
+
+      const userData = userSnap.data();
+      const userTokens = userData.fcmTokens || [];
+
+      if (userTokens.length === 0) {
+        console.log('❌ No FCM tokens found for user:', userId);
+        return false;
+      }
+
+      // Send to all tokens (handle multiple devices)
+      const response = await fetch('/api/send-notification', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tokens: userTokens,
+          title,
+          body,
+          data: {
+            ...data,
+            chatId: data?.chatId,
+            senderId: data?.senderId,
+            type: 'chat_message',
+            timestamp: new Date().toISOString()
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Push notification sent to user:', result);
+      
+      return result.success;
+
+    } catch (error) {
+      console.error('❌ Error sending push notification to user:', error);
+      return false;
+    }
+  }, []);
+
+  // ✅ SEND PUSH NOTIFICATION TO CURRENT TOKEN (Testing)
+  const testPushNotification = useCallback(async (title: string, body: string) => {
+    if (!fcmToken) {
+      console.log('❌ No FCM token available');
+      return false;
+    }
+
+    try {
+      const response = await fetch('/api/send-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: fcmToken,
+          title,
+          body,
+          data: {
+            type: 'test',
+            timestamp: new Date().toISOString()
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Test push notification sent:', result);
+      
+      return result.success;
+
+    } catch (error) {
+      console.error('❌ Error sending test push notification:', error);
+      return false;
+    }
+  }, [fcmToken]);
+
   return {
     fcmToken,
     isFCMSupported: isSupported,
     notificationPermission: permission,
     requestPermission,
     disableNotifications,
-    showNotification,
-    showNewMessageNotification,
-    showUnreadMessagesNotification,
-    showSidebarUnreadNotification
+    sendPushNotification,
+    testPushNotification
   };
 };

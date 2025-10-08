@@ -1,5 +1,4 @@
 // components/chat/ChatWindow.tsx
-// components/ChatWindow.tsx
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -8,7 +7,6 @@ import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
 import { useNotifications } from '@/hooks/useNotifications';
-import { toast } from 'react-hot-toast';
 
 interface ChatWindowProps {
   chatId: string;
@@ -22,41 +20,54 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
-  const [hasNotifiedUnread, setHasNotifiedUnread] = useState(false);
-  const { showNewMessageNotification, showUnreadMessagesNotification } = useNotifications();
+  const { sendPushNotification } = useNotifications();
   const previousMessagesRef = useRef<Message[]>([]);
 
-  const participantName =
-    otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
+  const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // 🔥 Realtime messages with notifications - FIXED VERSION
+  // 🔥 Realtime messages with PUSH NOTIFICATIONS
   useEffect(() => {
-  if (!chatId || !user) return;
+    if (!chatId || !user) return;
 
-  const unsubscribe = getMessages(chatId, (msgs) => {
-    // Check for new messages
-    if (previousMessagesRef.current.length > 0 && msgs.length > previousMessagesRef.current.length) {
-      const newMessages = msgs.slice(previousMessagesRef.current.length);
-      
-      newMessages.forEach((message) => {
-        // Show notification for new messages from other users
-        if (message.senderId !== user.uid) {
-          const isChatActive = isActive && document.hasFocus();
-          
-          // Only show notifications if they can be used
-          if (typeof window !== 'undefined') {
-            showNewMessageNotification(
-              participantName,
-              message.text,
-              isChatActive
-            );
+    const unsubscribe = getMessages(chatId, (msgs) => {
+      // Check for new messages
+      if (previousMessagesRef.current.length > 0 && msgs.length > previousMessagesRef.current.length) {
+        const newMessages = msgs.slice(previousMessagesRef.current.length);
+        
+        newMessages.forEach((message) => {
+          // Send PUSH NOTIFICATION for new messages from other users
+          if (message.senderId !== user.uid && otherUser) {
+            const isChatActive = isActive && document.hasFocus();
+            
+            // Only send push notification if chat is not active
+            if (!isChatActive) {
+              console.log('🚀 Sending push notification to:', otherUser.uid);
+              sendPushNotification(
+                otherUser.uid,
+                `New message from ${participantName}`,
+                message.text,
+                {
+                  chatId: chatId,
+                  senderId: message.senderId,
+                  messageId: message.id,
+                  type: 'new_message'
+                }
+              ).then(success => {
+                if (success) {
+                  console.log('✅ Push notification sent successfully');
+                } else {
+                  console.log('❌ Failed to send push notification');
+                }
+              });
+            } else {
+              console.log('💬 Chat is active, skipping push notification');
+            }
           }
-        }
-      });
-    }
+        });
+      }
 
-    setMessages(msgs);
-    previousMessagesRef.current = msgs;
+      setMessages(msgs);
+      previousMessagesRef.current = msgs;
 
       // ✅ Mark unread messages as read when chat opens
       if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
@@ -76,18 +87,16 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
     return () => {
       unsubscribe();
       setHasMarkedInitialRead(false);
-      setHasNotifiedUnread(false);
       previousMessagesRef.current = [];
     };
   }, [
     chatId, 
     user, 
+    otherUser,
     hasMarkedInitialRead, 
-    hasNotifiedUnread, 
     isActive, 
     participantName, 
-    showNewMessageNotification, 
-    showUnreadMessagesNotification
+    sendPushNotification
   ]);
 
   // ✉️ Send message
@@ -151,13 +160,15 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
             <h2 className="text-lg font-semibold text-gray-800">
               {participantName}
             </h2>
-            <p className="text-sm text-gray-600">Active now</p>
+            <p className="text-sm text-gray-600">
+              {otherUser?.isOnline ? 'Online' : 'Offline'}
+            </p>
           </div>
           <div className="flex items-center space-x-2">
-            
-
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span className="text-xs text-green-600 font-medium">Online</span>
+            <div className={`w-2 h-2 rounded-full ${otherUser?.isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className={`text-xs font-medium ${otherUser?.isOnline ? 'text-green-600' : 'text-gray-500'}`}>
+              {otherUser?.isOnline ? 'Online' : 'Offline'}
+            </span>
           </div>
         </div>
       </div>

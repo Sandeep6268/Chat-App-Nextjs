@@ -1,5 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage, isSupported, deleteToken } from 'firebase/messaging';
+import { 
+  getMessaging, 
+  getToken, 
+  onMessage, 
+  isSupported, 
+  deleteToken 
+} from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -13,17 +19,18 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Get messaging instance
+// VAPID Key - Firebase Console se milegi
+const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+
 export const getMessagingInstance = async () => {
   if (typeof window === 'undefined') return null;
   
   try {
-    const isSupportedBrowser = await isSupported();
-    if (!isSupportedBrowser) {
-      console.log('🚫 FCM not supported in this browser');
+    const supported = await isSupported();
+    if (!supported) {
+      console.warn('🚫 This browser does not support Firebase Cloud Messaging');
       return null;
     }
-    
     return getMessaging(app);
   } catch (error) {
     console.error('❌ Error getting messaging instance:', error);
@@ -31,15 +38,33 @@ export const getMessagingInstance = async () => {
   }
 };
 
-// Register service worker
-export const registerServiceWorker = async () => {
+// ✅ IMPROVED SERVICE WORKER REGISTRATION
+export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    console.warn('🚫 Service Workers not supported');
     return null;
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    console.log('✅ Service Worker registered:', registration);
+    // Service worker ko root level pe register karo
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+      scope: '/',
+      updateViaCache: 'none'
+    });
+
+    console.log('✅ Service Worker registered successfully:', registration);
+    
+    // Wait for service worker to be ready
+    if (registration.installing) {
+      await new Promise(resolve => {
+        registration.installing?.addEventListener('statechange', (e) => {
+          if ((e.target as ServiceWorker).state === 'activated') {
+            resolve(null);
+          }
+        });
+      });
+    }
+    
     return registration;
   } catch (error) {
     console.error('❌ Service Worker registration failed:', error);
@@ -47,56 +72,57 @@ export const registerServiceWorker = async () => {
   }
 };
 
-// Get FCM token with better error handling
+// ✅ IMPROVED FCM TOKEN GENERATION
 export const getFCMToken = async (): Promise<string | null> => {
   try {
     console.log('🔄 Getting FCM token...');
-    
-    // Register service worker first
-    const registration = await registerServiceWorker();
-    if (!registration) {
-      console.log('❌ Service Worker registration failed');
-      return null;
-    }
 
-    const messaging = await getMessagingInstance();
-    if (!messaging) {
-      console.log('❌ Messaging not available');
-      return null;
-    }
-
-    // Check notification permission
+    // Step 1: Check browser support
     if (!('Notification' in window)) {
-      console.log('🚫 Notifications not supported');
+      console.warn('🚫 Notifications not supported in this browser');
       return null;
     }
 
+    // Step 2: Check permission
     let permission = Notification.permission;
     
     if (permission === 'default') {
       console.log('🔄 Requesting notification permission...');
       permission = await Notification.requestPermission();
-      console.log('📋 Permission result:', permission);
     }
 
     if (permission !== 'granted') {
-      console.log('❌ Notification permission not granted:', permission);
+      console.warn(`❌ Notification permission not granted: ${permission}`);
       return null;
     }
 
-    // Get FCM token with service worker scope
-    console.log('🔑 Getting FCM token...');
+    // Step 3: Get messaging instance
+    const messaging = await getMessagingInstance();
+    if (!messaging) {
+      console.warn('❌ Messaging not available');
+      return null;
+    }
+
+    // Step 4: Register service worker
+    const registration = await registerServiceWorker();
+    if (!registration) {
+      console.warn('❌ Service Worker registration failed');
+      return null;
+    }
+
+    // Step 5: Get FCM token
+    console.log('🔑 Generating FCM token with VAPID key...');
     const token = await getToken(messaging, {
-      vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+      vapidKey: VAPID_KEY,
       serviceWorkerRegistration: registration
     });
 
     if (token) {
-      console.log('✅ FCM Token received:', token.substring(0, 20) + '...');
+      console.log('✅ FCM Token generated successfully');
       localStorage.setItem('fcmToken', token);
       return token;
     } else {
-      console.log('❌ No FCM token received');
+      console.warn('❌ No FCM token received');
       return null;
     }
   } catch (error) {
@@ -104,12 +130,18 @@ export const getFCMToken = async (): Promise<string | null> => {
     
     // Specific error handling
     if (error instanceof Error) {
-      if (error.message.includes('messaging/permission-blocked')) {
-        console.log('🔕 Notifications blocked by user');
-      } else if (error.message.includes('messaging/permission-default')) {
-        console.log('🤔 Notification permission not granted');
-      } else if (error.message.includes('messaging/unregistered')) {
-        console.log('📱 App not registered');
+      switch (error.message) {
+        case 'messaging/permission-blocked':
+          console.warn('🔕 Notifications blocked by user');
+          break;
+        case 'messaging/permission-default':
+          console.warn('🤔 Notification permission not granted');
+          break;
+        case 'messaging/failed-service-worker-registration':
+          console.warn('📱 Service Worker registration failed');
+          break;
+        default:
+          console.warn('📱 Unknown error:', error.message);
       }
     }
     
@@ -117,34 +149,17 @@ export const getFCMToken = async (): Promise<string | null> => {
   }
 };
 
-// Delete FCM token
-export const deleteFCMToken = async (): Promise<boolean> => {
-  try {
-    const messaging = await getMessagingInstance();
-    if (!messaging) return false;
-
-    const token = await getFCMToken();
-    if (token) {
-      await deleteToken(messaging);
-      localStorage.removeItem('fcmToken');
-      console.log('✅ FCM token deleted');
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('❌ Error deleting FCM token:', error);
-    return false;
-  }
-};
-
-// Listen for foreground messages
+// ✅ FOREGROUND MESSAGE HANDLER
 export const onForegroundMessage = async (callback: (payload: any) => void) => {
   try {
     const messaging = await getMessagingInstance();
     if (!messaging) return;
 
     return onMessage(messaging, (payload) => {
-      console.log('📱 Received foreground message:', payload);
+      console.log('📱 Foreground message received:', payload);
+      
+      // Don't show browser notification in foreground
+      // Let the callback handle it (toast, etc.)
       callback(payload);
     });
   } catch (error) {
@@ -152,7 +167,23 @@ export const onForegroundMessage = async (callback: (payload: any) => void) => {
   }
 };
 
-// Check if FCM is supported
+// ✅ DELETE TOKEN
+export const deleteFCMToken = async (): Promise<boolean> => {
+  try {
+    const messaging = await getMessagingInstance();
+    if (!messaging) return false;
+
+    await deleteToken(messaging);
+    localStorage.removeItem('fcmToken');
+    console.log('✅ FCM token deleted');
+    return true;
+  } catch (error) {
+    console.error('❌ Error deleting FCM token:', error);
+    return false;
+  }
+};
+
+// ✅ CHECK FCM SUPPORT
 export const isFCMSupported = async (): Promise<boolean> => {
   if (typeof window === 'undefined') return false;
   
@@ -160,14 +191,18 @@ export const isFCMSupported = async (): Promise<boolean> => {
     const supported = await isSupported();
     const hasServiceWorker = 'serviceWorker' in navigator;
     const hasPushManager = 'PushManager' in window;
-    
+    const isHttps = window.location.protocol === 'https:';
+    const isLocalhost = window.location.hostname === 'localhost';
+
     console.log('🔍 FCM Support Check:', {
       fcmSupported: supported,
       serviceWorker: hasServiceWorker,
-      pushManager: hasPushManager
+      pushManager: hasPushManager,
+      https: isHttps,
+      localhost: isLocalhost
     });
-    
-    return supported && hasServiceWorker && hasPushManager;
+
+    return supported && hasServiceWorker && hasPushManager && (isHttps || isLocalhost);
   } catch (error) {
     console.error('❌ Error checking FCM support:', error);
     return false;
