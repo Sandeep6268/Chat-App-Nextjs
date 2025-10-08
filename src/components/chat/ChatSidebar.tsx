@@ -34,12 +34,11 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const currentChatId = pathname?.split('/chat/')[1];
 
   // Fetch users and chats
-// Update the existing useEffect in ChatSidebar.tsx
+// More aggressive version - notification for EVERY new message
 useEffect(() => {
   if (!user) return;
 
   let unsubscribeChats: (() => void) | undefined;
-  const sentNotifications = new Set(); // Track already notified messages
 
   const fetchData = async () => {
     try {
@@ -78,94 +77,83 @@ useEffect(() => {
         const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
         const previousTotal = previousTotalUnreadRef.current;
         
-        console.log('📊 [SIDEBAR] Unread count update:', {
+        console.log('📊 [SIDEBAR] Unread count:', {
           previous: previousTotal,
           current: totalUnreadMessages,
           change: totalUnreadMessages - previousTotal
         });
         
-        // ✅ PUSH NOTIFICATION LOGIC: Send push notification for EVERY unread count increase
-        if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
+        // ✅ AGGRESSIVE PUSH NOTIFICATIONS: For EVERY unread count increase
+        if (totalUnreadMessages > previousTotal) {
           const newUnreadCount = totalUnreadMessages - previousTotal;
           const chatsWithUnread = userChats.filter(chat => (chat.unreadCount || 0) > 0);
           
-          console.log('🚀 [SIDEBAR] Sending push notification for unread increase:', {
+          console.log('🚀 [SIDEBAR] Unread count increased, sending push notification...', {
             newMessages: newUnreadCount,
-            totalUnread: totalUnreadMessages,
-            chatsWithUnread: chatsWithUnread.length
+            totalUnread: totalUnreadMessages
           });
 
-          // Find which chats have new unread messages
-          const chatsWithNewUnread = userChats.filter(chat => {
-            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
-            const previousUnread = previousChat?.unreadCount || 0;
-            return (chat.unreadCount || 0) > previousUnread;
-          });
+          // Send notification for EVERY increase, no matter how small
+          if (!document.hasFocus()) {
+            // Individual chat notifications
+            userChats.forEach(chat => {
+              const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
+              const previousUnread = previousChat?.unreadCount || 0;
+              const currentUnread = chat.unreadCount || 0;
+              
+              if (currentUnread > previousUnread) {
+                const otherUserInfo = getOtherUserInfo(chat);
+                const newMessages = currentUnread - previousUnread;
+                
+                if (newMessages > 0) {
+                  const notification = new Notification(
+                    `💬 ${otherUserInfo.name}`,
+                    {
+                      body: newMessages === 1 
+                        ? `Sent you a message` 
+                        : `Sent you ${newMessages} new messages`,
+                      icon: '/icon-192.png',
+                      badge: '/badge.png',
+                      tag: `chat-${chat.id}-${Date.now()}`, // Unique tag for each notification
+                      requireInteraction: false,
+                      data: {
+                        chatId: chat.id,
+                        userId: otherUserInfo.uid
+                      }
+                    }
+                  );
 
-          // Send push notification for each chat with new unread messages
-          chatsWithNewUnread.forEach(chat => {
-            const otherUserInfo = getOtherUserInfo(chat);
-            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
-            const previousUnread = previousChat?.unreadCount || 0;
-            const newMessagesInChat = (chat.unreadCount || 0) - previousUnread;
+                  notification.onclick = () => {
+                    window.focus();
+                    router.push(`/chat/${chat.id}`);
+                    notification.close();
+                  };
 
-            if (newMessagesInChat > 0) {
-              console.log(`💬 [SIDEBAR] New messages in chat with ${otherUserInfo.name}:`, {
-                chatId: chat.id,
-                newMessages: newMessagesInChat,
-                totalUnreadInChat: chat.unreadCount
-              });
+                  console.log(`✅ [SIDEBAR] Individual notification sent for ${otherUserInfo.name}`);
+                }
+              }
+            });
 
-              // Send push notification for this specific chat
-              if (!document.hasFocus()) {
-                const notification = new Notification(
-                  `💬 ${otherUserInfo.name}`,
+            // Summary notification
+            if (newUnreadCount > 1) {
+              setTimeout(() => {
+                const summaryNotification = new Notification(
+                  'New Messages 📱',
                   {
-                    body: newMessagesInChat === 1 
-                      ? `You have 1 new message` 
-                      : `You have ${newMessagesInChat} new messages`,
+                    body: `You have ${newUnreadCount} new messages across ${chatsWithUnread.length} conversations`,
                     icon: '/icon-192.png',
                     badge: '/badge.png',
-                    tag: `chat-${chat.id}`,
-                    requireInteraction: true,
-                    data: {
-                      chatId: chat.id,
-                      userId: otherUserInfo.uid
-                    }
+                    tag: `summary-${Date.now()}`,
+                    requireInteraction: false,
                   }
                 );
 
-                notification.onclick = () => {
+                summaryNotification.onclick = () => {
                   window.focus();
-                  // Navigate to the specific chat
-                  router.push(`/chat/${chat.id}`);
-                  notification.close();
+                  summaryNotification.close();
                 };
-
-                console.log(`✅ [SIDEBAR] Push notification sent for chat ${chat.id}`);
-              }
+              }, 1000); // Delay summary notification by 1 second
             }
-          });
-
-          // Also send a summary notification
-          if (!document.hasFocus() && newUnreadCount > 0) {
-            const summaryNotification = new Notification(
-              newUnreadCount === 1 ? '1 New Message 📱' : `${newUnreadCount} New Messages 📱`,
-              {
-                body: `You have ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''} in ${chatsWithUnread.length} conversation${chatsWithUnread.length > 1 ? 's' : ''}`,
-                icon: '/icon-192.png',
-                badge: '/badge.png',
-                tag: 'unread-summary',
-                requireInteraction: true,
-              }
-            );
-
-            summaryNotification.onclick = () => {
-              window.focus();
-              summaryNotification.close();
-            };
-
-            console.log('✅ [SIDEBAR] Summary push notification sent');
           }
         }
         
@@ -210,7 +198,7 @@ useEffect(() => {
       unsubscribeChats();
     }
   };
-}, [user, currentChatId]);
+}, [user, currentChatId, router]);
 
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {
