@@ -17,6 +17,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isUserActiveInThisChat, setIsUserActiveInThisChat] = useState(false);
   const [hasMarkedMessagesRead, setHasMarkedMessagesRead] = useState(false);
 
@@ -178,9 +179,9 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
+    <div className="flex-1 flex flex-col bg-white h-full">
       {/* Chat Header - Fixed at top */}
-      <div className="bg-green-50 px-6 py-4 border-b border-gray-200 flex-shrink-0">
+      <div className="bg-green-50 px-6 py-4 border-b border-gray-200 flex-shrink-0 sticky top-0 z-10">
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">
@@ -197,8 +198,12 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
         </div>
       </div>
 
-      {/* Messages Area - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+      {/* Messages Area - Scrollable with fixed height */}
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-6 bg-gray-50"
+        style={{ height: 'calc(100vh - 180px)' }} // Adjust based on header and input height
+      >
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -251,7 +256,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
       </div>
 
       {/* Message Input - Fixed at bottom */}
-      <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0">
+      <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0 sticky bottom-0 z-10">
         <form onSubmit={handleSendMessage} className="flex space-x-4">
           <input
             type="text"
