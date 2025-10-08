@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ✅ UPDATED: Enhanced message payload with proper click actions
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app';
     const chatId = data?.chatId;
     const targetUrl = chatId ? `${baseUrl}/chat/${chatId}` : baseUrl;
 
