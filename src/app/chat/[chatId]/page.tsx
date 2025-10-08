@@ -124,14 +124,15 @@ export default function SpecificChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-green-50">
-      <header className="bg-green-600 text-white p-4">
+    <div className="min-h-screen bg-green-50 flex flex-col">
+      {/* Fixed Header */}
+      <header className="bg-green-600 text-white p-4 fixed top-0 left-0 right-0 z-50 shadow-lg">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center space-x-4">
             {/* Hamburger icon for mobile */}
             <button
               onClick={toggleSidebar}
-              className="md:hidden p-2 rounded-md hover:bg-green-700 transition-colors"
+              className="p-2 rounded-md hover:bg-green-700 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -140,10 +141,12 @@ export default function SpecificChatPage() {
             <h1 className="text-xl font-bold">Chat App</h1>
           </div>
           <div className="flex items-center space-x-4">
-            <span className="hidden sm:inline">Welcome, {user.displayName || user.email}</span>
+            <span className="hidden sm:inline text-sm md:text-base">
+              Welcome, {user.displayName || user.email}
+            </span>
             <button
               onClick={handleSignOut}
-              className="bg-green-700 hover:bg-green-800 px-3 py-1 rounded text-sm transition-colors"
+              className="bg-green-700 hover:bg-green-800 px-3 py-1 rounded text-sm transition-colors whitespace-nowrap"
             >
               Sign Out
             </button>
@@ -151,13 +154,14 @@ export default function SpecificChatPage() {
         </div>
       </header>
       
-      <main className="container mx-auto h-[calc(100vh-80px)] flex">
+      {/* Main Content with padding for fixed header */}
+      <main className="flex-1 flex pt-16"> {/* pt-16 for header height */}
         {/* Sidebar - Always visible on desktop, toggleable on mobile */}
         <div className={`
           w-80 lg:w-96 bg-white border-r border-gray-200
           transition-transform duration-300
           md:block
-          ${isSidebarOpen ? 'block absolute inset-0 z-50 md:static' : 'hidden md:block'}
+          ${isSidebarOpen ? 'block fixed inset-0 z-40 mt-16 md:static md:mt-0' : 'hidden md:block'}
         `}>
           <ChatSidebar onSelectChat={handleSelectChat} />
         </div>
@@ -166,17 +170,13 @@ export default function SpecificChatPage() {
         <div className="flex-1 relative">
           <ChatWindow chatId={chatId} otherUser={otherUser} />
           
-          {/* Back Button for Mobile - Only show when sidebar is closed */}
-          {/* {isMobile && !isSidebarOpen && (
-            <button
-              onClick={toggleSidebar}
-              className="md:hidden absolute top-4 left-4 p-2 bg-green-600 text-white rounded-full shadow-lg z-10"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          )} */}
+          {/* Overlay for mobile sidebar */}
+          {isMobile && isSidebarOpen && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
         </div>
       </main>
     </div>
