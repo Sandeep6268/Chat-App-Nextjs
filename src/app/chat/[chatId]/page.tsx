@@ -22,6 +22,24 @@ export default function SpecificChatPage() {
   const [chat, setChat] = useState<Chat | null>(null);
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [chatLoading, setChatLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check if mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // On mobile, hide sidebar by default when in chat view
+      if (mobile) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Fetch chat data and other user info
   useEffect(() => {
@@ -79,6 +97,17 @@ export default function SpecificChatPage() {
     }
   };
 
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  // Close sidebar when chat is selected on mobile
+  const handleSelectChat = () => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    }
+  };
+
   if (loading || chatLoading) {
     return (
       <div className="min-h-screen bg-green-50 flex items-center justify-center">
@@ -98,7 +127,18 @@ export default function SpecificChatPage() {
     <div className="min-h-screen bg-green-50">
       <header className="bg-green-600 text-white p-4">
         <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold">Chat App</h1>
+          <div className="flex items-center space-x-4">
+            {/* Hamburger icon for mobile */}
+            <button
+              onClick={toggleSidebar}
+              className="md:hidden p-2 rounded-md hover:bg-green-700 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className="text-xl font-bold">Chat App</h1>
+          </div>
           <div className="flex items-center space-x-4">
             <span className="hidden sm:inline">Welcome, {user.displayName || user.email}</span>
             <button
@@ -112,8 +152,32 @@ export default function SpecificChatPage() {
       </header>
       
       <main className="container mx-auto h-[calc(100vh-80px)] flex">
-        <ChatSidebar />
-        <ChatWindow chatId={chatId} otherUser={otherUser} />
+        {/* Sidebar - Always visible on desktop, toggleable on mobile */}
+        <div className={`
+          w-80 lg:w-96 bg-white border-r border-gray-200
+          transition-transform duration-300
+          md:block
+          ${isSidebarOpen ? 'block absolute inset-0 z-50 md:static' : 'hidden md:block'}
+        `}>
+          <ChatSidebar onSelectChat={handleSelectChat} />
+        </div>
+
+        {/* Chat Window */}
+        <div className="flex-1 relative">
+          <ChatWindow chatId={chatId} otherUser={otherUser} />
+          
+          {/* Back Button for Mobile - Only show when sidebar is closed */}
+          {isMobile && !isSidebarOpen && (
+            <button
+              onClick={toggleSidebar}
+              className="md:hidden absolute top-4 left-4 p-2 bg-green-600 text-white rounded-full shadow-lg z-10"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
+        </div>
       </main>
     </div>
   );

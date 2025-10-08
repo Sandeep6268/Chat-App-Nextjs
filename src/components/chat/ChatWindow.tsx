@@ -4,16 +4,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
-import { Message,User } from '@/types';
-import { onSnapshot, collection, query, orderBy } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+import { Message, User } from '@/types';
 
 interface ChatWindowProps {
   chatId: string;
-   otherUser?: User | null; // Add participant name prop
+  otherUser?: User | null;
 }
 
-  export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
+export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -24,6 +22,7 @@ interface ChatWindowProps {
 
   // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
+
   // Set user as active in this chat when component mounts
   useEffect(() => {
     if (chatId && user) {
@@ -123,12 +122,12 @@ interface ChatWindowProps {
     }
   };
 
-  const formatMessageTime = (timestamp: any) => {
+  const formatMessageTime = (timestamp: { toDate: () => Date } | null) => {
     if (!timestamp) return '';
     try {
       const date = timestamp.toDate();
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch (error) {
+    } catch {
       return '';
     }
   };
@@ -180,8 +179,8 @@ interface ChatWindowProps {
 
   return (
     <div className="flex-1 flex flex-col bg-white">
-      {/* Chat Header */}
-      <div className="bg-green-50 px-6 py-4 border-b border-gray-200">
+      {/* Chat Header - Fixed at top */}
+      <div className="bg-green-50 px-6 py-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">
@@ -198,7 +197,7 @@ interface ChatWindowProps {
         </div>
       </div>
 
-      {/* Messages Area */}
+      {/* Messages Area - Scrollable */}
       <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
@@ -251,8 +250,8 @@ interface ChatWindowProps {
         )}
       </div>
 
-      {/* Message Input */}
-      <div className="border-t border-gray-200 bg-white p-4">
+      {/* Message Input - Fixed at bottom */}
+      <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0">
         <form onSubmit={handleSendMessage} className="flex space-x-4">
           <input
             type="text"

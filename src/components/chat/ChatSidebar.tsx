@@ -10,7 +10,11 @@ import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
 
-export default function ChatSidebar() {
+interface ChatSidebarProps {
+  onSelectChat?: () => void;
+}
+
+export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const { user } = useAuth();
   const pathname = usePathname();
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
@@ -87,7 +91,7 @@ export default function ChatSidebar() {
           setUsersWithoutChats(usersWithoutExistingChats);
         });
         
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error loading chats:', error);
       } finally {
         setLoading(false);
@@ -122,10 +126,15 @@ export default function ChatSidebar() {
       // Close modal after creating chat
       setShowNewChatModal(false);
       
+      // Close sidebar on mobile
+      if (onSelectChat) {
+        onSelectChat();
+      }
+      
       // Redirect to the new chat
       window.location.href = `/chat/${chatRef.id}`;
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating chat:', error);
       alert('Error creating chat. Please try again.');
     } finally {
@@ -133,7 +142,7 @@ export default function ChatSidebar() {
     }
   };
 
-  // Handle chat click - mark messages as read
+  // Handle chat click - mark messages as read AND close sidebar on mobile
   const handleChatClick = async (chatId: string, hasUnread: boolean) => {
     if (hasUnread && user) {
       try {
@@ -141,6 +150,11 @@ export default function ChatSidebar() {
       } catch (error) {
         console.error('Error marking messages as read:', error);
       }
+    }
+    
+    // Close sidebar on mobile when chat is selected
+    if (onSelectChat) {
+      onSelectChat();
     }
   };
 
@@ -188,7 +202,7 @@ export default function ChatSidebar() {
   };
 
   // Format last message time
-  const formatLastMessageTime = (timestamp: any) => {
+  const formatLastMessageTime = (timestamp: { toDate: () => Date } | null) => {
     if (!timestamp) return '';
     try {
       const date = timestamp.toDate();
@@ -203,7 +217,7 @@ export default function ChatSidebar() {
       if (diffHours < 24) return `${diffHours}h`;
       if (diffDays < 7) return `${diffDays}d`;
       return date.toLocaleDateString();
-    } catch (error) {
+    } catch {
       return '';
     }
   };
@@ -371,7 +385,7 @@ export default function ChatSidebar() {
                 const unreadCount = chat.unreadCount || 0;
                 const hasUnread = unreadCount > 0;
                 const isActiveChat = chat.id === currentChatId;
-                const otherUser = getOtherUserInfo(chat);
+                const otherUserInfo = getOtherUserInfo(chat);
                 
                 return (
                   <Link
@@ -393,14 +407,14 @@ export default function ChatSidebar() {
                           hasUnread ? 'bg-green-500' : 
                           isActiveChat ? 'bg-blue-500' : 'bg-gray-400'
                         }`}>
-                          {otherUser.photoURL ? (
+                          {otherUserInfo.photoURL ? (
                             <img 
-                              src={otherUser.photoURL} 
-                              alt={otherUser.name}
+                              src={otherUserInfo.photoURL} 
+                              alt={otherUserInfo.name}
                               className="w-12 h-12 rounded-full object-cover"
                             />
                           ) : (
-                            otherUser.name[0]?.toUpperCase() || 'U'
+                            otherUserInfo.name[0]?.toUpperCase() || 'U'
                           )}
                         </div>
                         {/* Unread Indicator */}
@@ -419,7 +433,7 @@ export default function ChatSidebar() {
                           <p className={`font-semibold text-sm truncate ${
                             hasUnread ? 'text-gray-900' : 'text-gray-700'
                           }`}>
-                            {otherUser.name}
+                            {otherUserInfo.name}
                           </p>
                           {chat.lastMessageTimestamp && (
                             <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
@@ -429,7 +443,7 @@ export default function ChatSidebar() {
                         </div>
                         
                         <p className="text-xs text-gray-500 truncate mt-1">
-                          {otherUser.email}
+                          {otherUserInfo.email}
                         </p>
                         
                         <p className={`text-sm truncate mt-1 ${
@@ -495,8 +509,6 @@ export default function ChatSidebar() {
                 {user?.email}
               </p>
             </div>
-            
-            
           </div>
         </div>
       </div>

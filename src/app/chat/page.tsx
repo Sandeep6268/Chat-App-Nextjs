@@ -19,8 +19,10 @@ export default function ChatPage() {
   // Check if mobile device
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth < 768) {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // On mobile, show sidebar by default
+      if (mobile) {
         setIsSidebarOpen(true);
       }
     };
@@ -49,6 +51,13 @@ export default function ChatPage() {
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  // Close sidebar when chat is selected on mobile
+  const handleSelectChat = () => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    }
   };
 
   if (loading) {
@@ -107,7 +116,7 @@ export default function ChatPage() {
           ${isMobile ? 'absolute inset-0 z-50 w-full' : 'w-full md:w-80 lg:w-96'}
           bg-white border-r border-gray-200
         `}>
-          <ChatSidebar onSelectChat={() => isMobile && setIsSidebarOpen(false)} />
+          <ChatSidebar onSelectChat={handleSelectChat} />
         </div>
 
         {/* Chat Window */}
@@ -117,14 +126,14 @@ export default function ChatPage() {
         `}>
           <ChatWindow chatId="" otherUser={null} />
           
-          {/* Back Button for Mobile */}
+          {/* Back Button for Mobile - Only show when sidebar is closed */}
           {isMobile && !isSidebarOpen && (
             <button
               onClick={toggleSidebar}
               className="md:hidden absolute top-4 left-4 p-2 bg-green-600 text-white rounded-full shadow-lg z-10"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
           )}
