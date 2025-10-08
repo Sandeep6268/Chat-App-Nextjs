@@ -37,7 +37,7 @@ const { sendPushNotification,showBrowserNotification } = useNotifications();
   const currentChatId = pathname?.split('/chat/')[1];
 
   // Fetch users and chats
-// In ChatSidebar.tsx - replace the useEffect
+// In ChatSidebar.tsx - FIXED useEffect
 useEffect(() => {
   if (!user) return;
 
@@ -75,51 +75,17 @@ useEffect(() => {
         const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
         const previousTotal = previousTotalUnreadRef.current;
         
-        console.log('📊 [SIDEBAR] Unread:', {
-          previous: previousTotal,
-          current: totalUnreadMessages,
-          change: totalUnreadMessages - previousTotal
-        });
-        
-        // ✅ SIMPLE & EFFECTIVE: Show notification for EVERY unread increase
+        // ✅ ONLY show browser notifications for CURRENT USER
         if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
           const newUnreadCount = totalUnreadMessages - previousTotal;
           
           console.log('🔔 [SIDEBAR] Unread increased:', newUnreadCount);
 
-          // 1. Show browser notification (INSTANT)
+          // Show browser notification to CURRENT USER
           showBrowserNotification(
             newUnreadCount === 1 ? '1 New Message 💬' : `${newUnreadCount} New Messages 💬`,
             `Total: ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''}`
           );
-
-          // 2. Send push notifications for each chat with new messages
-          userChats.forEach(chat => {
-            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
-            const previousUnread = previousChat?.unreadCount || 0;
-            const currentUnread = chat.unreadCount || 0;
-            
-            if (currentUnread > previousUnread) {
-              const otherUserInfo = getOtherUserInfo(chat);
-              const newMessages = currentUnread - previousUnread;
-              
-              if (newMessages > 0 && otherUserInfo.uid) {
-                console.log(`💬 [SIDEBAR] New messages from ${otherUserInfo.name}`);
-                
-                // Send push notification
-                sendPushNotification(
-                  otherUserInfo.uid,
-                  `💬 ${otherUserInfo.name}`,
-                  `Sent you ${newMessages} new message${newMessages > 1 ? 's' : ''}`,
-                  {
-                    chatId: chat.id,
-                    senderId: user.uid,
-                    type: 'new_message'
-                  }
-                );
-              }
-            }
-          });
         }
         
         // Update state
@@ -127,7 +93,6 @@ useEffect(() => {
         previousChatsRef.current = userChats;
         setTotalUnread(totalUnreadMessages);
         setExistingChats(userChats);
-        
         // Calculate users without chats
         const usersWithExistingChats = new Set<string>();
         userChats.forEach(chat => {
@@ -157,7 +122,7 @@ useEffect(() => {
       unsubscribeChats();
     }
   };
-}, [user, currentChatId, sendPushNotification, showBrowserNotification]);
+}, [user, currentChatId, showBrowserNotification]); // Removed sendPushNotification from dependencies
 
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {

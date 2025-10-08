@@ -123,6 +123,7 @@ useEffect(() => {
         read: false,
         type: 'text',
       });
+      sendPushNotification
       setNewMessage('');
       
       // Clear input after successful send
