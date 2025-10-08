@@ -25,6 +25,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const [usersWithoutChats, setUsersWithoutChats] = useState<User[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const previousChatsRef = useRef<Chat[]>([]);
 
   // Refs to track previous values
   const previousTotalUnreadRef = useRef<number>(0);
@@ -33,12 +34,12 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const currentChatId = pathname?.split('/chat/')[1];
 
   // Fetch users and chats
-// Advanced version with more control
+// Update the existing useEffect in ChatSidebar.tsx
 useEffect(() => {
   if (!user) return;
 
   let unsubscribeChats: (() => void) | undefined;
-  let notificationCooldown = false;
+  const sentNotifications = new Set(); // Track already notified messages
 
   const fetchData = async () => {
     try {
@@ -73,93 +74,104 @@ useEffect(() => {
           chat.participants && chat.participants.includes(user.uid)
         );
         
-        // Calculate total unread count and track individual chat changes
+        // Calculate total unread count
         const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-        const previousChats = previousTotalUnreadRef.current;
+        const previousTotal = previousTotalUnreadRef.current;
         
-        console.log('📊 [SIDEBAR] Chat update:', {
-          previousTotal: previousChats,
-          currentTotal: totalUnreadMessages,
-          chatCount: userChats.length
+        console.log('📊 [SIDEBAR] Unread count update:', {
+          previous: previousTotal,
+          current: totalUnreadMessages,
+          change: totalUnreadMessages - previousTotal
         });
+        
+        // ✅ PUSH NOTIFICATION LOGIC: Send push notification for EVERY unread count increase
+        if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
+          const newUnreadCount = totalUnreadMessages - previousTotal;
+          const chatsWithUnread = userChats.filter(chat => (chat.unreadCount || 0) > 0);
+          
+          console.log('🚀 [SIDEBAR] Sending push notification for unread increase:', {
+            newMessages: newUnreadCount,
+            totalUnread: totalUnreadMessages,
+            chatsWithUnread: chatsWithUnread.length
+          });
 
-        // ✅ SMART NOTIFICATION LOGIC
-        const showUnreadNotification = () => {
-          if (notificationCooldown) {
-            console.log('⏰ [SIDEBAR] Notification cooldown active, skipping');
-            return;
-          }
+          // Find which chats have new unread messages
+          const chatsWithNewUnread = userChats.filter(chat => {
+            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
+            const previousUnread = previousChat?.unreadCount || 0;
+            return (chat.unreadCount || 0) > previousUnread;
+          });
 
-          if ('Notification' in window && Notification.permission === 'granted') {
-            // Only show notification if app is not focused
-            if (!document.hasFocus()) {
-              const chatsWithUnread = userChats.filter(chat => (chat.unreadCount || 0) > 0);
-              const newUnreadCount = totalUnreadMessages - previousChats;
-              
-              let notificationTitle = 'New Messages 📱';
-              let notificationBody = '';
-              
-              if (newUnreadCount > 0) {
-                // New messages arrived
-                notificationBody = `You have ${newUnreadCount} new message${newUnreadCount > 1 ? 's' : ''} in ${chatsWithUnread.length} conversation${chatsWithUnread.length > 1 ? 's' : ''}`;
-              } else if (totalUnreadMessages > 0 && previousChats === 0) {
-                // First time unread messages
-                notificationBody = `You have ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''} waiting`;
-              } else {
-                // Other unread count changes
-                notificationBody = `You have ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''}`;
+          // Send push notification for each chat with new unread messages
+          chatsWithNewUnread.forEach(chat => {
+            const otherUserInfo = getOtherUserInfo(chat);
+            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
+            const previousUnread = previousChat?.unreadCount || 0;
+            const newMessagesInChat = (chat.unreadCount || 0) - previousUnread;
+
+            if (newMessagesInChat > 0) {
+              console.log(`💬 [SIDEBAR] New messages in chat with ${otherUserInfo.name}:`, {
+                chatId: chat.id,
+                newMessages: newMessagesInChat,
+                totalUnreadInChat: chat.unreadCount
+              });
+
+              // Send push notification for this specific chat
+              if (!document.hasFocus()) {
+                const notification = new Notification(
+                  `💬 ${otherUserInfo.name}`,
+                  {
+                    body: newMessagesInChat === 1 
+                      ? `You have 1 new message` 
+                      : `You have ${newMessagesInChat} new messages`,
+                    icon: '/icon-192.png',
+                    badge: '/badge.png',
+                    tag: `chat-${chat.id}`,
+                    requireInteraction: true,
+                    data: {
+                      chatId: chat.id,
+                      userId: otherUserInfo.uid
+                    }
+                  }
+                );
+
+                notification.onclick = () => {
+                  window.focus();
+                  // Navigate to the specific chat
+                  router.push(`/chat/${chat.id}`);
+                  notification.close();
+                };
+
+                console.log(`✅ [SIDEBAR] Push notification sent for chat ${chat.id}`);
               }
+            }
+          });
 
-              const notification = new Notification(notificationTitle, {
-                body: notificationBody,
+          // Also send a summary notification
+          if (!document.hasFocus() && newUnreadCount > 0) {
+            const summaryNotification = new Notification(
+              newUnreadCount === 1 ? '1 New Message 📱' : `${newUnreadCount} New Messages 📱`,
+              {
+                body: `You have ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''} in ${chatsWithUnread.length} conversation${chatsWithUnread.length > 1 ? 's' : ''}`,
                 icon: '/icon-192.png',
                 badge: '/badge.png',
-                tag: 'unread-update',
+                tag: 'unread-summary',
                 requireInteraction: true,
-              });
+              }
+            );
 
-              notification.onclick = () => {
-                window.focus();
-                notification.close();
-              };
+            summaryNotification.onclick = () => {
+              window.focus();
+              summaryNotification.close();
+            };
 
-              // Set cooldown to prevent spam
-              notificationCooldown = true;
-              setTimeout(() => {
-                notificationCooldown = false;
-              }, 5000); // 5 second cooldown
-
-              console.log('✅ [SIDEBAR] Unread notification shown:', {
-                title: notificationTitle,
-                body: notificationBody,
-                cooldown: true
-              });
-            } else {
-              console.log('💻 [SIDEBAR] App is focused, skipping notification');
-            }
-          } else {
-            console.log('🔕 [SIDEBAR] Notifications not granted or not supported');
+            console.log('✅ [SIDEBAR] Summary push notification sent');
           }
-        };
-
-        // Trigger conditions for notifications
-        if (totalUnreadMessages > previousChats && previousChats > 0) {
-          // Unread count increased (new messages)
-          console.log('🆕 [SIDEBAR] Unread count increased');
-          showUnreadNotification();
-        } else if (totalUnreadMessages > 0 && previousChats === 0) {
-          // First unread messages appeared
-          console.log('🔔 [SIDEBAR] First unread messages detected');
-          showUnreadNotification();
-        } else if (totalUnreadMessages === 0 && previousChats > 0) {
-          // All messages read
-          console.log('✅ [SIDEBAR] All messages read');
-        } else {
-          console.log('ℹ️ [SIDEBAR] Unread count unchanged or decreased');
         }
         
         // Update refs with current values
         previousTotalUnreadRef.current = totalUnreadMessages;
+        previousChatsRef.current = userChats;
         
         // Update state
         setTotalUnread(totalUnreadMessages);
