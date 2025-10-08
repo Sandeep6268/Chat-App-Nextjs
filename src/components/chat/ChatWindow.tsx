@@ -28,86 +28,90 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // 🔥 IMPROVED: Realtime messages with better push notification logic
-  // In ChatWindow.tsx - replace the useEffect
-useEffect(() => {
-  if (!chatId || !user) return;
+  // 🔥 IMPROVED: Realtime messages with fixed push notification logic
+  useEffect(() => {
+    if (!chatId || !user) return;
 
-  const unsubscribe = getMessages(chatId, (msgs) => {
-    const previousCount = previousMessagesRef.current.length;
-    const currentCount = msgs.length;
+    const unsubscribe = getMessages(chatId, (msgs) => {
+      const previousCount = previousMessagesRef.current.length;
+      const currentCount = msgs.length;
 
-    console.log(`💬 [CHAT] Messages: ${previousCount} -> ${currentCount}`);
+      console.log(`💬 [CHAT] Messages: ${previousCount} -> ${currentCount}`);
 
-    // Check for new messages
-    if (previousCount > 0 && currentCount > previousCount) {
-      const newMessages = msgs.slice(previousCount);
-      
-      console.log(`🆕 [CHAT] ${newMessages.length} new messages`);
+      // Check for new messages
+      if (previousCount > 0 && currentCount > previousCount) {
+        const newMessages = msgs.slice(previousCount);
+        
+        console.log(`🆕 [CHAT] ${newMessages.length} new messages`);
 
-      newMessages.forEach((message) => {
-        // Send notification for messages from other users
-        if (message.senderId !== user.uid && otherUser) {
-          const isChatActive = isActive && document.hasFocus();
-          
-          console.log(`🔔 [CHAT] New message from ${otherUser.uid}:`, {
-            isChatActive,
-            isFocused: document.hasFocus()
-          });
-
-          if (!isChatActive) {
-            console.log('🚀 [CHAT] Sending push notification...');
+        newMessages.forEach((message) => {
+          // Send notification for messages from other users
+          if (message.senderId !== user.uid && otherUser) {
+            const isChatActive = isActive && document.hasFocus();
             
-            // Send push notification
-            sendPushNotification(
-              otherUser.uid,
-              `💬 ${participantName}`,
-              message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
-              {
-                chatId: chatId,
-                senderId: message.senderId,
-                messageId: message.id,
-                type: 'new_message'
-              }
-            ).then(success => {
-              console.log(success ? '✅ [CHAT] Push sent' : '❌ [CHAT] Push failed');
+            console.log(`🔔 [CHAT] New message from ${otherUser.uid}:`, {
+              isChatActive,
+              isFocused: document.hasFocus()
             });
 
-            // Also show browser notification
-            showBrowserNotification(
-              `💬 ${participantName}`,
-              message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text
-            );
+            // ✅ FIXED: Send push notification ONLY when chat is not active
+            if (!isActive || !document.hasFocus()) {
+              console.log('🚀 [CHAT] Sending push notification (chat inactive)...');
+              
+              sendPushNotification(
+                otherUser.uid,
+                `💬 ${participantName}`,
+                message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
+                {
+                  chatId: chatId,
+                  senderId: message.senderId,
+                  type: 'new_message',
+                  priority: 'high',
+                  ttl: 3600 // 1 hour
+                }
+              ).then(success => {
+                console.log(success ? '✅ [CHAT] Push sent successfully' : '❌ [CHAT] Push failed');
+              });
+
+              // Show browser notification as fallback
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(`💬 ${participantName}`, {
+                  body: message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
+                  icon: '/icon-192.png',
+                  tag: `chat-${chatId}`
+                });
+              }
+            }
           }
-        }
-      });
-    }
-
-    setMessages(msgs);
-    previousMessagesRef.current = msgs;
-
-    // Mark messages as read
-    if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
-      const unreadMessages = msgs.filter(
-        (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
-      );
-      
-      if (unreadMessages.length > 0) {
-        markAllMessagesAsRead(chatId, user.uid)
-          .then(() => setHasMarkedInitialRead(true))
-          .catch(console.error);
-      } else {
-        setHasMarkedInitialRead(true);
+        });
       }
-    }
-  });
 
-  return () => {
-    unsubscribe();
-    setHasMarkedInitialRead(false);
-    previousMessagesRef.current = [];
-  };
-}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName, sendPushNotification, showBrowserNotification]);
+      setMessages(msgs);
+      previousMessagesRef.current = msgs;
+
+      // Mark messages as read
+      if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
+        const unreadMessages = msgs.filter(
+          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+        );
+        
+        if (unreadMessages.length > 0) {
+          markAllMessagesAsRead(chatId, user.uid)
+            .then(() => setHasMarkedInitialRead(true))
+            .catch(console.error);
+        } else {
+          setHasMarkedInitialRead(true);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      setHasMarkedInitialRead(false);
+      previousMessagesRef.current = [];
+    };
+  }, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName, sendPushNotification, showBrowserNotification]);
+
   // ✉️ Improved Send message function
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,8 +127,6 @@ useEffect(() => {
         read: false,
         type: 'text',
       });
-      sendPushNotification
-      setNewMessage('');
       
       // Clear input after successful send
       setNewMessage('');
