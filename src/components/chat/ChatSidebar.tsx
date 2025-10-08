@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
@@ -17,6 +17,7 @@ interface ChatSidebarProps {
 export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const { user } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [existingChats, setExistingChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,8 +129,8 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         onSelectChat();
       }
       
-      // Redirect to the new chat
-      window.location.href = `/chat/${chatRef.id}`;
+      // Use router.push for proper navigation
+      router.push(`/chat/${chatRef.id}`);
       
     } catch (error) {
       console.error('Error creating chat:', error);
@@ -140,7 +141,12 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   };
 
   // Handle chat click - mark messages as read when user clicks on chat
-  const handleChatClick = async (chatId: string, hasUnread: boolean) => {
+  const handleChatClick = async (chatId: string, hasUnread: boolean, e?: React.MouseEvent) => {
+    // Prevent default link behavior if event is provided
+    if (e) {
+      e.preventDefault();
+    }
+    
     console.log('🔄 Chat clicked:', chatId, 'Has unread:', hasUnread);
     
     // Mark messages as read when user clicks on any chat (not just current one)
@@ -153,6 +159,9 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         console.error('❌ Error marking messages as read:', error);
       }
     }
+    
+    // Use router.push for navigation instead of Link
+    router.push(`/chat/${chatId}`);
     
     // Close sidebar on mobile when chat is selected
     if (onSelectChat) {
@@ -372,17 +381,16 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                 const otherUserInfo = getOtherUserInfo(chat);
                 
                 return (
-                  <Link
+                  <div
                     key={chat.id}
-                    href={`/chat/${chat.id}`}
-                    onClick={() => handleChatClick(chat.id, hasUnread)}
-                    className={`block p-3 rounded-lg mb-1 transition-all border ${
+                    className={`block p-3 rounded-lg mb-1 transition-all border cursor-pointer ${
                       isActiveChat 
                         ? 'bg-blue-50 border-blue-200 shadow-sm' 
                         : hasUnread 
                           ? 'bg-orange-50 border-orange-200 hover:bg-orange-100' 
                           : 'bg-white border-gray-100 hover:bg-gray-50'
                     }`}
+                    onClick={(e) => handleChatClick(chat.id, hasUnread, e)}
                   >
                     <div className="flex items-center space-x-3">
                       {/* User Avatar */}
@@ -437,7 +445,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                         </p>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
