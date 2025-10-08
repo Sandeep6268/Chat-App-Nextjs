@@ -172,31 +172,28 @@ export const useNotifications = () => {
   }, []);
 
   // ✅ SEND PUSH NOTIFICATION TO CURRENT TOKEN (Testing)
-  const testPushNotification = useCallback(async (title: string, body: string) => {
-  if (!fcmToken) {
-    console.log('❌ No FCM token available');
+const testPushNotification = useCallback(async (title: string, body: string) => {
+  // Get current token from localStorage
+  let currentToken = localStorage.getItem('fcmToken');
+  
+  if (!currentToken) {
+    console.log('❌ No FCM token found in localStorage');
     alert('No FCM token available. Please enable notifications first.');
     return false;
   }
 
+  console.log('🧪 Testing with token:', currentToken.substring(0, 30) + '...');
+
   try {
-    console.log('🧪 Testing push notification with token:', fcmToken.substring(0, 20) + '...');
-    
     const response = await fetch('/api/send-notification', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        token: fcmToken,
-        title: title || 'Test Push Notification',
-        body: body || 'This is a test push notification from your chat app! 🎉',
-        data: {
-          type: 'test',
-          timestamp: new Date().toISOString(),
-          test: true,
-          url: window.location.origin
-        }
+        token: currentToken,
+        title: title || 'Test Notification',
+        body: body || 'This is a test push notification!',
       }),
     });
 
@@ -205,33 +202,45 @@ export const useNotifications = () => {
     console.log('📩 API Response:', result);
 
     if (!response.ok) {
-      console.error('❌ API Error:', result);
-      
-      let errorMessage = result.error || 'Failed to send notification';
-      if (result.details) {
-        errorMessage += `\nDetails: ${result.details}`;
+      // If token is invalid, try to refresh it
+      if (result.code === 'messaging/invalid-argument' || 
+          result.code === 'messaging/invalid-registration-token') {
+        
+        console.log('🔄 Token invalid, attempting to refresh...');
+        
+        // Delete old token and get new one
+        localStorage.removeItem('fcmToken');
+        const newToken = await getFCMToken();
+        
+        if (newToken) {
+          console.log('✅ Got new token:', newToken.substring(0, 30) + '...');
+          alert('Token was expired. New token generated. Please try again.');
+          return false;
+        } else {
+          alert('Token expired and failed to generate new one. Please refresh the page and enable notifications again.');
+          return false;
+        }
       }
       
-      alert(`Error: ${errorMessage}`);
+      alert(`Error: ${result.error}\n\nCode: ${result.code}`);
       return false;
     }
 
     if (result.success) {
-      console.log('✅ Test push notification sent successfully:', result);
-      alert('✅ Test notification sent successfully! Check your device for push notification.');
+      console.log('✅ Test push notification sent successfully!');
+      alert('✅ Test notification sent! Check your device.');
       return true;
     } else {
-      console.error('❌ API returned success: false', result);
-      alert(`Error: ${result.error || 'Unknown error'}`);
+      alert(`Error: ${result.error}`);
       return false;
     }
 
   } catch (error: any) {
-    console.error('❌ Network error sending test push notification:', error);
-    alert(`Network Error: ${error.message}\n\nPlease check your internet connection.`);
+    console.error('❌ Network error:', error);
+    alert(`Network Error: ${error.message}`);
     return false;
   }
-}, [fcmToken]);
+}, []);
 
   return {
     fcmToken,

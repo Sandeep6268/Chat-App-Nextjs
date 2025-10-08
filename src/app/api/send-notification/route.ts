@@ -76,15 +76,41 @@ export async function POST(request: NextRequest) {
       messageBody
     });
 
-    // Validate required fields
+    // ✅ IMPROVED TOKEN VALIDATION
     if (!token) {
       return NextResponse.json(
         { 
           success: false,
-          error: 'Missing required field: token'
+          error: 'Missing FCM token'
         },
         { status: 400 }
       );
+    }
+
+    // Validate token format
+    if (typeof token !== 'string') {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Invalid token format: must be a string'
+        },
+        { status: 400 }
+      );
+    }
+
+    if (token.length < 50 || token.length > 500) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: `Invalid token length: ${token.length}. Expected 50-500 characters.`
+        },
+        { status: 400 }
+      );
+    }
+
+    // Basic token format check (FCM tokens usually start with specific patterns)
+    if (!token.startsWith('f') && !token.includes(':')) {
+      console.warn('⚠️ Token format might be invalid');
     }
 
     if (!title) {
@@ -107,35 +133,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ FIXED: Simple and valid FCM payload
+    // ✅ SIMPLIFIED PAYLOAD - Minimum required fields only
     const message = {
-      token: token,
+      token: token.trim(), // Trim any whitespace
       notification: {
-        title: title.substring(0, 50), // Limit title length
-        body: messageBody.substring(0, 150), // Limit body length
-        icon: '/icon-192.png',
-        // sound: 'default' // Optional
+        title: title.substring(0, 100), // Safe limit
+        body: messageBody.substring(0, 200), // Safe limit
       },
-      data: {
-        // Simple data payload - only strings
-        type: data?.type || 'general',
-        chatId: data?.chatId || '',
-        senderId: data?.senderId || '',
-        timestamp: new Date().toISOString(),
-        click_action: 'OPEN_CHAT', // Important for web
-        url: process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app'
-      },
-      webpush: {
-        fcmOptions: {
-          link: process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app',
-        },
-      }
+      // Remove all optional fields that might cause issues
     };
 
-    console.log('📨 Sending FCM message...', {
-      title: message.notification.title,
-      body: message.notification.body
-    });
+    console.log('📨 Sending FCM message with token:', token.substring(0, 20) + '...');
     
     try {
       // Send the message
@@ -152,8 +160,7 @@ export async function POST(request: NextRequest) {
     } catch (fcmError: any) {
       console.error('❌ FCM send error:', {
         code: fcmError.code,
-        message: fcmError.message,
-        details: fcmError.details
+        message: fcmError.message
       });
       
       let errorMessage = 'Failed to send push notification';
@@ -161,21 +168,17 @@ export async function POST(request: NextRequest) {
 
       if (fcmError.code) {
         switch (fcmError.code) {
-          case 'messaging/invalid-payload':
-            errorMessage = 'Invalid notification payload. Please check the data format.';
+          case 'messaging/invalid-argument':
+            errorMessage = 'Invalid FCM token. The token might be malformed or expired.';
             statusCode = 400;
             break;
           case 'messaging/registration-token-not-registered':
-            errorMessage = 'Token is no longer valid. Please refresh token.';
+            errorMessage = 'FCM token is no longer valid. Please generate a new token.';
             statusCode = 410;
             break;
           case 'messaging/invalid-registration-token':
-            errorMessage = 'Invalid registration token.';
+            errorMessage = 'Invalid registration token format.';
             statusCode = 400;
-            break;
-          case 'messaging/too-many-requests':
-            errorMessage = 'Too many requests. Please try again later.';
-            statusCode = 429;
             break;
           default:
             errorMessage = `FCM Error: ${fcmError.code}`;
@@ -187,7 +190,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: errorMessage,
           code: fcmError.code,
-          details: process.env.NODE_ENV === 'development' ? fcmError.message : undefined
+          action: 'Please refresh your FCM token and try again.'
         },
         { status: statusCode }
       );
@@ -199,15 +202,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false,
-        error: 'Internal server error',
-        message: 'An unexpected error occurred'
+        error: 'Internal server error'
       },
       { status: 500 }
     );
   }
 }
 
-// Test endpoint
 export async function GET() {
   try {
     const admin = require('firebase-admin');
@@ -216,15 +217,13 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       status: 'Firebase Admin is configured correctly',
-      projectId: "whatsapp-clone-69386",
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
     return NextResponse.json({
       success: false,
       status: 'Firebase Admin configuration error',
-      error: error.message,
-      timestamp: new Date().toISOString()
+      error: error.message
     }, { status: 500 });
   }
 }

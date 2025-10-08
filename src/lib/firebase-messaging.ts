@@ -38,6 +38,43 @@ export const getMessagingInstance = async () => {
   }
 };
 
+// Refresh FCM token
+export const refreshFCMToken = async (): Promise<string | null> => {
+  try {
+    console.log('🔄 Refreshing FCM token...');
+    
+    // Delete old token
+    const messaging = await getMessagingInstance();
+    if (messaging) {
+      try {
+        const currentToken = await getFCMToken();
+        if (currentToken) {
+          await deleteToken(messaging);
+          console.log('✅ Old token deleted');
+        }
+      } catch (error) {
+        console.log('ℹ️ No token to delete or already expired');
+      }
+    }
+    
+    // Clear localStorage
+    localStorage.removeItem('fcmToken');
+    
+    // Get new token
+    const newToken = await getFCMToken();
+    
+    if (newToken) {
+      console.log('✅ New FCM token generated:', newToken.substring(0, 20) + '...');
+      return newToken;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Error refreshing FCM token:', error);
+    return null;
+  }
+};
+
 // ✅ IMPROVED SERVICE WORKER REGISTRATION
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
