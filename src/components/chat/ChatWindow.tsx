@@ -28,89 +28,100 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   // 🔥 IMPROVED: Realtime messages with better push notification logic
   useEffect(() => {
-    if (!chatId || !user) return;
+  if (!chatId || !user) return;
 
-    const unsubscribe = getMessages(chatId, (msgs) => {
-      const previousCount = previousMessagesRef.current.length;
-      const currentCount = msgs.length;
+  const unsubscribe = getMessages(chatId, (msgs) => {
+    const previousCount = previousMessagesRef.current.length;
+    const currentCount = msgs.length;
 
-      // Check for new messages only if we have previous messages
-      if (previousCount > 0 && currentCount > previousCount) {
-        const newMessages = msgs.slice(previousCount);
-        
-        newMessages.forEach((message) => {
-          // Send PUSH NOTIFICATION for new messages from other users
-          if (message.senderId !== user.uid && otherUser) {
-            const isChatActive = isActive && document.hasFocus();
-            
-            // Only send push notification if chat is not active or tab is not focused
-            if (!isChatActive) {
-              console.log('🚀 Sending push notification to:', otherUser.uid);
-              sendPushNotification(
-                otherUser.uid,
-                `💬 ${participantName}`,
-                message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
-                {
-                  chatId: chatId,
-                  senderId: message.senderId,
-                  messageId: message.id,
-                  type: 'new_message',
-                  timestamp: new Date().toISOString()
-                }
-              ).then(success => {
-                if (success) {
-                  console.log('✅ Push notification sent successfully');
-                } else {
-                  console.log('❌ Failed to send push notification - user might not have notifications enabled');
-                }
-              });
-            } else {
-              console.log('💬 Chat is active, skipping push notification');
-            }
-          }
+    console.log(`💬 [CHAT] Messages update: ${previousCount} -> ${currentCount} messages`);
+
+    // Check for new messages only if we have previous messages
+    if (previousCount > 0 && currentCount > previousCount) {
+      const newMessages = msgs.slice(previousCount);
+      
+      console.log(`🆕 [CHAT] ${newMessages.length} new message(s) detected`);
+
+      newMessages.forEach((message, index) => {
+        console.log(`   📝 Message ${index + 1}:`, {
+          id: message.id,
+          sender: message.senderId,
+          text: message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''),
+          timestamp: message.timestamp?.toDate().toISOString()
         });
-      }
 
-      setMessages(msgs);
-      previousMessagesRef.current = msgs;
+        // Send PUSH NOTIFICATION for new messages from other users
+        if (message.senderId !== user.uid && otherUser) {
+          const isChatActive = isActive && document.hasFocus();
+          
+          console.log(`🔔 [CHAT] Checking notification for message from ${otherUser.uid}:`, {
+            isChatActive,
+            isFocused: document.hasFocus(),
+            chatActive: isActive
+          });
 
-      // ✅ Mark unread messages as read when chat opens
-      if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
-        const unreadMessages = msgs.filter(
-          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
-        );
-        
-        if (unreadMessages.length > 0) {
-          console.log(`📖 Marking ${unreadMessages.length} messages as read`);
-          markAllMessagesAsRead(chatId, user.uid)
-            .then(() => {
-              setHasMarkedInitialRead(true);
-              console.log('✅ Messages marked as read');
-            })
-            .catch(error => {
-              console.error('❌ Error marking messages as read:', error);
+          // Only send push notification if chat is not active
+          if (!isChatActive) {
+            console.log('🚀 [CHAT] Sending push notification...');
+            sendPushNotification(
+              otherUser.uid,
+              `💬 ${participantName}`,
+              message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
+              {
+                chatId: chatId,
+                senderId: message.senderId,
+                messageId: message.id,
+                type: 'new_message',
+                timestamp: new Date().toISOString()
+              }
+            ).then(success => {
+              if (success) {
+                console.log('✅ [CHAT] Push notification sent successfully');
+              } else {
+                console.log('❌ [CHAT] Failed to send push notification');
+              }
             });
+          } else {
+            console.log('💬 [CHAT] Chat is active, skipping push notification');
+          }
         } else {
-          setHasMarkedInitialRead(true);
+          console.log('ℹ️ [CHAT] Message from self or no other user, skipping notification');
         }
+      });
+    }
+
+    setMessages(msgs);
+    previousMessagesRef.current = msgs;
+
+    // Mark unread messages as read when chat opens
+    if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
+      const unreadMessages = msgs.filter(
+        (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+      );
+      
+      if (unreadMessages.length > 0) {
+        console.log(`📖 [CHAT] Marking ${unreadMessages.length} messages as read`);
+        markAllMessagesAsRead(chatId, user.uid)
+          .then(() => {
+            setHasMarkedInitialRead(true);
+            console.log('✅ [CHAT] Messages marked as read');
+          })
+          .catch(error => {
+            console.error('❌ [CHAT] Error marking messages as read:', error);
+          });
+      } else {
+        setHasMarkedInitialRead(true);
       }
-    });
+    }
+  });
 
-    return () => {
-      unsubscribe();
-      setHasMarkedInitialRead(false);
-      previousMessagesRef.current = [];
-    };
-  }, [
-    chatId, 
-    user, 
-    otherUser,
-    hasMarkedInitialRead, 
-    isActive, 
-    participantName, 
-    sendPushNotification
-  ]);
-
+  return () => {
+    console.log('🧹 [CHAT] Cleaning up chat listener');
+    unsubscribe();
+    setHasMarkedInitialRead(false);
+    previousMessagesRef.current = [];
+  };
+}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName, sendPushNotification]);
   // ✉️ Improved Send message function
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
