@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
+import NotificationPermission from '@/components/NotificationPermission';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -21,6 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
+          <NotificationPermission />
           {children}
           <Toaster 
             position="top-right"
