@@ -139,9 +139,10 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 
-  // Handle chat click - mark messages as read AND close sidebar on mobile
+  // Handle chat click - mark messages as read ONLY when user actually clicks on the chat
   const handleChatClick = async (chatId: string, hasUnread: boolean) => {
-    if (hasUnread && user) {
+    // Only mark as read if user is actually viewing this chat (not just hovering)
+    if (hasUnread && user && chatId === currentChatId) {
       try {
         await markAllMessagesAsRead(chatId, user.uid);
       } catch (error) {

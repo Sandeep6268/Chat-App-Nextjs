@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
+import { getMessages, sendMessage } from '@/lib/firestore';
 import { Message, User } from '@/types';
 
 interface ChatWindowProps {
@@ -19,7 +19,6 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isUserActiveInThisChat, setIsUserActiveInThisChat] = useState(false);
-  const [hasMarkedMessagesRead, setHasMarkedMessagesRead] = useState(false);
 
   // Get participant name from otherUser
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
@@ -28,79 +27,28 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
   useEffect(() => {
     if (chatId && user) {
       setIsUserActiveInThisChat(true);
-      setHasMarkedMessagesRead(false);
     }
 
     return () => {
       setIsUserActiveInThisChat(false);
-      setHasMarkedMessagesRead(false);
     };
   }, [chatId, user]);
 
-  // Fetch messages in real-time and auto-mark as read when user is active
+  // Fetch messages in real-time
   useEffect(() => {
     if (!chatId || !user) return;
 
     const unsubscribe = getMessages(chatId, (messages) => {
       setMessages(messages);
-      
-      // Auto-mark messages as read when user is active in this chat
-      if (messages.length > 0 && isUserActiveInThisChat && !hasMarkedMessagesRead) {
-        const unreadMessages = messages.filter(msg => 
-          !msg.readBy?.includes(user.uid) && msg.senderId !== user.uid
-        );
-        
-        if (unreadMessages.length > 0) {
-          markAllMessagesAsRead(chatId, user.uid)
-            .then(() => {
-              setHasMarkedMessagesRead(true);
-            })
-            .catch(console.error);
-        } else {
-          setHasMarkedMessagesRead(true);
-        }
-      }
     });
 
     return unsubscribe;
-  }, [chatId, user, isUserActiveInThisChat, hasMarkedMessagesRead]);
-
-  // Auto-mark messages as read when user becomes active in this chat
-  useEffect(() => {
-    if (isUserActiveInThisChat && messages.length > 0 && user && !hasMarkedMessagesRead) {
-      const unreadMessages = messages.filter(msg => 
-        !msg.readBy?.includes(user.uid) && msg.senderId !== user.uid
-      );
-      
-      if (unreadMessages.length > 0) {
-        markAllMessagesAsRead(chatId, user.uid)
-          .then(() => {
-            setHasMarkedMessagesRead(true);
-          })
-          .catch(console.error);
-      } else {
-        setHasMarkedMessagesRead(true);
-      }
-    }
-  }, [isUserActiveInThisChat, messages, chatId, user, hasMarkedMessagesRead]);
+  }, [chatId, user]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Reset hasMarkedMessagesRead when new messages arrive and user is active
-  useEffect(() => {
-    if (isUserActiveInThisChat && messages.length > 0) {
-      const hasNewUnreadMessages = messages.some(msg => 
-        !msg.readBy?.includes(user?.uid || '') && msg.senderId !== user?.uid
-      );
-      
-      if (hasNewUnreadMessages && hasMarkedMessagesRead) {
-        setHasMarkedMessagesRead(false);
-      }
-    }
-  }, [messages, isUserActiveInThisChat, user, hasMarkedMessagesRead]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,7 +150,7 @@ export default function ChatWindow({ chatId, otherUser }: ChatWindowProps) {
       <div 
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto p-6 bg-gray-50"
-        style={{ height: 'calc(100vh - 180px)' }} // Adjust based on header and input height
+        style={{ height: 'calc(100vh - 180px)' }}
       >
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
