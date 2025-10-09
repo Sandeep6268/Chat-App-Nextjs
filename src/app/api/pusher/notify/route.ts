@@ -1,4 +1,4 @@
-// app/api/pusher/notify/route.ts
+// app/api/pusher/notify/route.ts - SIMPLE VERSION
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Use Pusher REST API directly
+    // Simple version - without icon
     const response = await fetch(
       `https://${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID}.pushnotifications.pusher.com/publish_api/v1/instances/${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID}/publishes/users`,
       {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
               title: title,
               body: body,
               deep_link: data?.url || process.env.NEXT_PUBLIC_APP_URL,
-              icon: '/icons/icon-192x192.png',
+              // icon removed to avoid URL format issues
             },
             data: data
           }
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json();
+    console.log('✅ Notification sent successfully:', result);
     return NextResponse.json({ success: true, result });
 
   } catch (error: any) {
