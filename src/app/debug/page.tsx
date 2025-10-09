@@ -19,7 +19,43 @@ export default function DebugPage() {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
     console.log(message);
   };
+const testMobileNotification = async () => {
+  if (!user) {
+    addLog('❌ Please login first');
+    return;
+  }
 
+  try {
+    addLog('📱 Testing mobile notification...');
+    
+    const response = await fetch('/api/notifications/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipientId: user.uid, // Send to yourself
+        senderName: 'Mobile Test',
+        messageText: 'This is a mobile notification test - please check if it works on your phone',
+        chatId: 'mobile-test-chat',
+        senderId: user.uid, // Use your own ID as sender
+        type: 'new_message'
+      }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      addLog(`❌ Mobile test failed: ${result.error}`);
+    } else {
+      addLog(`✅ Mobile test sent: ${JSON.stringify(result)}`);
+      addLog('📱 Now check your mobile device for notification');
+    }
+    
+  } catch (error) {
+    addLog(`❌ Mobile test error: ${error}`);
+  }
+};
   useEffect(() => {
     // Redirect to home if not in development
     // if (process.env.NODE_ENV === 'production' && !window.location.href.includes('localhost')) {
@@ -251,7 +287,12 @@ export default function DebugPage() {
             >
               Save Token Manually
             </button>
-
+            <button 
+  onClick={testMobileNotification}
+  className="bg-teal-500 text-white px-4 py-2 rounded hover:bg-teal-600"
+>
+  Test Mobile Notification
+</button>
             <button 
               onClick={testNotificationAPI}
               className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
