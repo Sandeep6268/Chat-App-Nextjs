@@ -9,11 +9,11 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-  // Disable server components for now to avoid issues
+  // Allow server components to use firebase-admin
   experimental: {
     serverComponentsExternalPackages: ['firebase-admin'],
   },
-  // Exclude firebase-admin from client bundle
+  // Exclude Node.js modules from client bundle
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
@@ -23,6 +23,7 @@ const nextConfig = {
         fs: false,
         child_process: false,
         http2: false,
+        dns: false,
       };
     }
     return config;
