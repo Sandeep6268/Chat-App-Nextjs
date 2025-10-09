@@ -1,13 +1,19 @@
-// lib/onesignal-service.ts
+// lib/onesignal-service.ts - FIXED
 import OneSignal from 'react-onesignal';
 
 export class OneSignalService {
   // Request notification permission
   static async requestPermission(): Promise<boolean> {
     try {
-      const permission = await OneSignal.Notifications.requestPermission();
-      console.log('🔔 Permission request result:', permission);
-      return permission;
+      const permission = await OneSignal.Notifications.getPermission();
+      console.log('🔔 Current permission:', permission);
+      
+      if (permission === 'default') {
+        await OneSignal.Slidedown.promptPush();
+        return true;
+      }
+      
+      return permission === 'granted';
     } catch (error) {
       console.error('Error requesting notification permission:', error);
       return false;
@@ -17,22 +23,33 @@ export class OneSignalService {
   // Check current permission status
   static async getPermissionStatus(): Promise<boolean> {
     try {
-      const permission = await OneSignal.Notifications.permission;
-      return permission;
+      const permission = await OneSignal.Notifications.getPermission();
+      return permission === 'granted';
     } catch (error) {
       console.error('Error checking permission status:', error);
       return false;
     }
   }
 
-  // Get player ID
+  // Get player ID - CORRECTED
   static async getPlayerId(): Promise<string | null> {
     try {
-      const playerId = await OneSignal.User.pushSubscription.id;
+      const playerId = await OneSignal.User.getId();
       return playerId;
     } catch (error) {
       console.error('Error getting player ID:', error);
       return null;
+    }
+  }
+
+  // Check if user is subscribed - CORRECTED
+  static async isSubscribed(): Promise<boolean> {
+    try {
+      const isSubscribed = await OneSignal.User.isSubscribed();
+      return isSubscribed;
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+      return false;
     }
   }
 
@@ -42,8 +59,8 @@ export class OneSignalService {
       const playerId = await this.getPlayerId();
       
       if (!playerId) {
-        console.error('No player ID available');
-        return false;
+        console.error('No player ID available - user might not be subscribed');
+        return { error: 'No player ID available' };
       }
 
       const response = await fetch('https://onesignal.com/api/v1/notifications', {
@@ -67,7 +84,7 @@ export class OneSignalService {
       return result;
     } catch (error) {
       console.error('Error sending test notification:', error);
-      return null;
+      return { error: error.message };
     }
   }
 
