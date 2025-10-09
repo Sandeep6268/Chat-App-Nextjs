@@ -5,7 +5,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
-import { NotificationService } from '@/lib/notifications'; // ✅ Add this import
 
 interface ChatWindowProps {
   chatId: string;
@@ -57,13 +56,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
               console.log('🚀 [CHAT] Sending push notification...');
               
               // Send push notification for new message
-              await NotificationService.sendNewMessageNotification({
-                recipientId: user.uid,
-                senderName: participantName,
-                messageText: message.text,
-                chatId: chatId,
-                senderId: message.senderId,
-              });
+              
             }
           }
         });

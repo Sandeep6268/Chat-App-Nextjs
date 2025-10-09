@@ -1,141 +1,102 @@
-import { firestore } from '@/lib/firebase';
-import { collection, doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
-
+// lib/notifications.ts
 export class NotificationService {
-  // Store FCM token for user
-  static async saveUserFCMToken(userId: string, token: string): Promise<void> {
+  private static instance: NotificationService;
+
+  public static getInstance(): NotificationService {
+    if (!NotificationService.instance) {
+      NotificationService.instance = new NotificationService();
+    }
+    return NotificationService.instance;
+  }
+
+  // Check if OneSignal is available
+  private isOneSignalAvailable(): boolean {
+    return typeof window !== 'undefined' && !!window.OneSignal;
+  }
+
+  // Get current user's OneSignal ID
+  async getOneSignalUserId(): Promise<string | null> {
+    if (!this.isOneSignalAvailable()) return null;
+
     try {
-      console.log('💾 Saving FCM token for user:', userId);
-      
-      const userRef = doc(firestore, 'users', userId);
-      await updateDoc(userRef, {
-        fcmTokens: arrayUnion(token),
-        updatedAt: new Date(),
-      });
-      
-      console.log('✅ FCM token saved successfully');
+      return await window.OneSignal.getUserId();
     } catch (error) {
-      console.error('❌ Error saving FCM token:', error);
-      throw error;
+      console.error('Error getting OneSignal user ID:', error);
+      return null;
     }
   }
 
-  // Remove FCM token for user
-  static async removeUserFCMToken(userId: string, token: string): Promise<void> {
+  // Check notification permission
+  async getNotificationPermission(): Promise<NotificationPermission> {
+    if (!this.isOneSignalAvailable()) return 'default';
+
     try {
-      const userRef = doc(firestore, 'users', userId);
-      await updateDoc(userRef, {
-        fcmTokens: arrayRemove(token),
-        updatedAt: new Date(),
-      });
-      console.log('✅ FCM token removed');
+      return await window.OneSignal.getNotificationPermission();
     } catch (error) {
-      console.error('❌ Error removing FCM token:', error);
-      throw error;
+      console.error('Error getting notification permission:', error);
+      return 'default';
     }
   }
 
-  // Get FCM tokens for a user
-  static async getUserFCMTokens(userId: string): Promise<string[]> {
+  // Request notification permission
+  async requestNotificationPermission(): Promise<void> {
+    if (!this.isOneSignalAvailable()) return;
+
     try {
-      const userDoc = await getDoc(doc(firestore, 'users', userId));
-      const userData = userDoc.data();
-      const tokens = userData?.fcmTokens || [];
-      console.log('📱 Retrieved FCM tokens for user:', userId, 'Count:', tokens.length);
-      return tokens;
+      await window.OneSignal.showSlidedownPrompt();
     } catch (error) {
-      console.error('❌ Error getting user FCM tokens:', error);
-      return [];
+      console.error('Error requesting notification permission:', error);
     }
   }
 
-  // Send push notification for new message
-  static async sendNewMessageNotification({
-    recipientId,
-    senderName,
-    messageText,
-    chatId,
-    senderId,
-  }: {
-    recipientId: string;
-    senderName: string;
-    messageText: string;
-    chatId: string;
-    senderId: string;
-  }): Promise<void> {
-    try {
-      console.log('📤 Sending new message notification to:', recipientId);
-      
-      const response = await fetch('/api/notifications/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipientId,
-          senderName,
-          messageText,
-          chatId,
-          senderId,
-          type: 'new_message'
-        }),
-      });
+  // Send test notification (for testing)
+  async sendTestNotification(title: string, message: string): Promise<void> {
+    if (!this.isOneSignalAvailable()) return;
 
-      const result = await response.json();
-      
-      if (!response.ok) {
-        console.error('❌ Notification API error:', result);
-        throw new Error(result.error || 'Failed to send notification');
+    try {
+      // This would typically be done from your backend
+      // For testing, you can use OneSignal dashboard
+      console.log('📤 Test notification:', { title, message });
+    } catch (error) {
+      console.error('Error sending test notification:', error);
+    }
+  }
+
+  // Subscribe to notification events
+  subscribeToNotifications(callbacks: {
+    onNotificationDisplay?: (event: any) => void;
+    onNotificationClick?: (event: any) => void;
+    onNotificationDismiss?: (event: any) => void;
+  }) {
+    if (!this.isOneSignalAvailable()) return;
+
+    try {
+      if (callbacks.onNotificationDisplay) {
+        window.OneSignal.on('notificationDisplay', callbacks.onNotificationDisplay);
       }
-
-      console.log('✅ Notification sent successfully:', result);
-      return result;
-
+      if (callbacks.onNotificationClick) {
+        window.OneSignal.on('notificationClick', callbacks.onNotificationClick);
+      }
+      if (callbacks.onNotificationDismiss) {
+        window.OneSignal.on('notificationDismiss', callbacks.onNotificationDismiss);
+      }
     } catch (error) {
-      console.error('❌ Error sending push notification:', error);
-      throw error;
+      console.error('Error subscribing to notification events:', error);
     }
   }
 
-  // Send notification for unread count increase
-  static async sendUnreadCountNotification({
-    recipientId,
-    senderName,
-    chatId,
-  }: {
-    recipientId: string;
-    senderName: string;
-    chatId: string;
-  }): Promise<void> {
+  // Unsubscribe from notification events
+  unsubscribeFromNotifications() {
+    if (!this.isOneSignalAvailable()) return;
+
     try {
-      console.log('📤 Sending unread count notification to:', recipientId);
-      
-      const response = await fetch('/api/notifications/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipientId,
-          senderName,
-          chatId,
-          type: 'unread_count'
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (!response.ok) {
-        console.error('❌ Unread count notification API error:', result);
-        throw new Error(result.error || 'Failed to send unread count notification');
-      }
-
-      console.log('✅ Unread count notification sent successfully:', result);
-      return result;
-
+      window.OneSignal.off('notificationDisplay');
+      window.OneSignal.off('notificationClick');
+      window.OneSignal.off('notificationDismiss');
     } catch (error) {
-      console.error('❌ Error sending unread count notification:', error);
-      throw error;
+      console.error('Error unsubscribing from notification events:', error);
     }
   }
 }
+
+export const notificationService = NotificationService.getInstance();

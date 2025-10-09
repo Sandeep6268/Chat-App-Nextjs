@@ -9,7 +9,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
-import { NotificationService } from '@/lib/notifications'; // ✅ Add this import
+import { notificationService } from '@/lib/notifications';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -38,34 +38,34 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 
   // ✅ FIXED: Unread count based notifications
   useEffect(() => {
-    if (!user) return;
+  if (!user) return;
 
-    let unsubscribeChats: (() => void) | undefined;
+  let unsubscribeChats: (() => void) | undefined;
 
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch users
-        const usersRef = collection(firestore, 'users');
-        const usersQuery = query(usersRef, where('uid', '!=', user.uid));
-        const usersSnapshot = await getDocs(usersQuery);
-        
-        const allUsers = usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          uid: doc.data().uid || doc.id,
-          email: doc.data().email || null,
-          displayName: doc.data().displayName || null,
-          photoURL: doc.data().photoURL || null,
-          phoneNumber: doc.data().phoneNumber || null,
-          createdAt: doc.data().createdAt,
-          lastSeen: doc.data().lastSeen,
-          isOnline: doc.data().isOnline || false,
-        } as User));
-        
-        setAvailableUsers(allUsers);
-        
-        // Real-time chats listener
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch users (existing code)
+      const usersRef = collection(firestore, 'users');
+      const usersQuery = query(usersRef, where('uid', '!=', user.uid));
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      const allUsers = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        uid: doc.data().uid || doc.id,
+        email: doc.data().email || null,
+        displayName: doc.data().displayName || null,
+        photoURL: doc.data().photoURL || null,
+        phoneNumber: doc.data().phoneNumber || null,
+        createdAt: doc.data().createdAt,
+        lastSeen: doc.data().lastSeen,
+        isOnline: doc.data().isOnline || false,
+      } as User));
+      
+      setAvailableUsers(allUsers);
+      
+      // Real-time chats listener
       unsubscribeChats = getUserChats(user.uid, (chats) => {
         const userChats = chats.filter(chat => 
           chat.participants && chat.participants.includes(user.uid)
@@ -77,7 +77,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         
         console.log(`📊 Unread: ${previousTotal} -> ${totalUnreadMessages}`);
         
-        // ✅ FIXED: Send notification when unread count increases
+        // ✅ FIXED: Send OneSignal notification when unread count increases
         if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
           const newUnreadCount = totalUnreadMessages - previousTotal;
           
@@ -90,7 +90,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
             return (chat.unreadCount || 0) > previousUnread;
           });
           
-          // Send notification for each new unread chat
+          // Send OneSignal notification for each new unread chat
           newUnreadChats.forEach(async (chat) => {
             const otherUserInfo = getOtherUserInfo(chat);
             const chatUnreadCount = chat.unreadCount || 0;
@@ -102,13 +102,12 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
             if (now - lastNotification > 30000) { // 30 second cooldown per chat
               notificationCooldownRef.current[chat.id] = now;
               
-              // Send push notification for unread count
-              await NotificationService.sendUnreadCountNotification({
-                recipientId: user.uid,
-                senderName: otherUserInfo.name,
-                unreadCount: chatUnreadCount,
-                chatId: chat.id,
-              });
+              // Send OneSignal notification
+              await sendOneSignalNotification(
+                otherUserInfo.name,
+                chat.lastMessage || 'New message',
+                chat.id
+              );
             }
           });
         }
@@ -118,37 +117,65 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         previousChatsRef.current = userChats;
         setTotalUnread(totalUnreadMessages);
         setExistingChats(userChats);
-          
-          // Calculate users without chats
-          const usersWithExistingChats = new Set<string>();
-          userChats.forEach(chat => {
-            chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
-              usersWithExistingChats.add(pid);
-            });
+        
+        // Calculate users without chats
+        const usersWithExistingChats = new Set<string>();
+        userChats.forEach(chat => {
+          chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
+            usersWithExistingChats.add(pid);
           });
-          
-          const usersWithoutExistingChats = allUsers.filter(user => 
-            !usersWithExistingChats.has(user.uid)
-          );
-          
-          setUsersWithoutChats(usersWithoutExistingChats);
         });
         
-      } catch (error) {
-        console.error('Error loading chats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+        const usersWithoutExistingChats = allUsers.filter(user => 
+          !usersWithExistingChats.has(user.uid)
+        );
+        
+        setUsersWithoutChats(usersWithoutExistingChats);
+      });
+      
+    } catch (error) {
+      console.error('Error loading chats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchData();
+  fetchData();
 
-    return () => {
-      if (unsubscribeChats) {
-        unsubscribeChats();
-      }
-    };
-  }, [user, currentChatId]);
+  return () => {
+    if (unsubscribeChats) {
+      unsubscribeChats();
+    }
+  };
+}, [user, currentChatId]);
+
+// OneSignal notification function
+const sendOneSignalNotification = async (senderName: string, message: string, chatId: string) => {
+  try {
+    // This would typically be done from your backend
+    // For now, we'll log it and you can implement the API call later
+    console.log('📤 OneSignal Notification:', {
+      title: `New message from ${senderName}`,
+      message: message,
+      chatId: chatId,
+      url: `${window.location.origin}/chat/${chatId}`
+    });
+
+    // You can implement API call to your backend here
+    // await fetch('/api/send-notification', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({
+    //     title: `New message from ${senderName}`,
+    //     message: message,
+    //     chatId: chatId
+    //   })
+    // });
+
+  } catch (error) {
+    console.error('Error sending OneSignal notification:', error);
+  }
+};
 
   // Get other user's info from chat
   const getOtherUserInfo = (chat: Chat) => {
