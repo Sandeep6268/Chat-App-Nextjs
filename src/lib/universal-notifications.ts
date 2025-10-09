@@ -93,6 +93,7 @@ private static showMobileToastNotification(
   message: string, 
   chatId: string
 ) {
+  
   const truncatedMessage = message.length > 40 ? message.substring(0, 40) + '...' : message;
   
   // Simple text toast
