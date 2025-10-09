@@ -1,4 +1,4 @@
-// components/notifications/DebugNotifications.tsx - FIXED
+// components/notifications/DebugNotifications.tsx - ALTERNATIVE FIX
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -62,7 +62,8 @@ export default function DebugNotifications() {
     setLoading(true);
     setMessage('');
     try {
-      await notificationService.sendNotification(
+      // 🔥 FIX: Use sendTestNotification instead of sendNotification
+      await notificationService.sendTestNotification(
         'Test Notification 🔔',
         'This is a test notification from your chat app!',
         user.uid
