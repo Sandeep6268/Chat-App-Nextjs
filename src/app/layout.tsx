@@ -49,9 +49,9 @@ export default function RootLayout({
         
         {/* OneSignal SDK - CORRECT SCRIPT */}
         <script 
-          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" 
-          defer
-        />
+  src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" 
+  async 
+/>
       </head>
       <body className={inter.className}>
         <OneSignalInitializer />

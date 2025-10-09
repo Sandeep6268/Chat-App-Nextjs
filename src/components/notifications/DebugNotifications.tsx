@@ -1,4 +1,4 @@
-// components/notifications/DebugNotifications.tsx - FIXED
+// components/notifications/DebugNotifications.tsx - UPDATED
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,21 +20,16 @@ export default function DebugNotifications() {
         setNotificationPermission(Notification.permission);
         
         // Check if OneSignal is properly loaded
-        const isReady = window.OneSignal && 
-                       typeof window.OneSignal.showSlidedownPrompt === 'function' &&
-                       typeof window.OneSignal.isPushNotificationsEnabled === 'function';
+        const isReady = window.OneSignalDeferred && 
+                       typeof window.OneSignalDeferred.showSlidedownPrompt === 'function';
         
-        setOneSignalReady(isReady);
+        setOneSignalReady(!!isReady);
         
-        // Check OneSignal subscription if ready
+        // Check subscription status
         if (isReady) {
-          window.OneSignal.isPushNotificationsEnabled()
-            .then((isSubscribed: boolean) => {
-              setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
-            })
-            .catch(() => {
-              setSubscriptionStatus('❓ Unknown');
-            });
+          window.OneSignalDeferred.isPushNotificationsEnabled((isSubscribed: boolean) => {
+            setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
+          });
         } else {
           setSubscriptionStatus('⏳ Loading...');
         }
@@ -51,7 +46,7 @@ export default function DebugNotifications() {
     setMessage('');
     try {
       if (oneSignalReady) {
-        await window.OneSignal.showSlidedownPrompt();
+        window.OneSignalDeferred.showSlidedownPrompt();
         setMessage('✅ Notification prompt shown! Please allow notifications.');
       } else {
         setMessage('❌ OneSignal not ready yet. Please wait...');
@@ -88,7 +83,7 @@ export default function DebugNotifications() {
   const handleManualSubscribe = async () => {
     if (oneSignalReady) {
       try {
-        await window.OneSignal.registerForPushNotifications();
+        window.OneSignalDeferred.registerForPushNotifications();
         setMessage('🔔 Manual subscription requested!');
       } catch (error) {
         setMessage('❌ Manual subscription failed');
@@ -148,7 +143,7 @@ export default function DebugNotifications() {
       {!oneSignalReady && (
         <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded">
           <p className="text-sm text-yellow-800">
-            <strong>⏳ OneSignal Loading:</strong> Please wait for OneSignal to initialize...
+            <strong>⏳ OneSignal Loading:</strong> Please wait for OneSignal to initialize (10-15 seconds)...
           </p>
         </div>
       )}

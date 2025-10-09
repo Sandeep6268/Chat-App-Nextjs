@@ -1,4 +1,4 @@
-// components/notifications/OneSignalInitializer.tsx - FINAL WORKING VERSION
+// components/notifications/OneSignalInitializer.tsx - FINAL
 'use client';
 
 import { useEffect } from 'react';
@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 declare global {
   interface Window {
     OneSignal: any;
+    OneSignalDeferred: any;
   }
 }
 
@@ -14,56 +15,30 @@ export default function OneSignalInitializer() {
   const { user } = useAuth();
 
   useEffect(() => {
-    // Wait for page to load completely
+    // Use the deferred loading approach
     const initializeOneSignal = () => {
       if (typeof window === 'undefined') return;
 
-      console.log('🚀 Initializing OneSignal...');
+      console.log('🚀 Starting OneSignal initialization...');
 
-      // Check if OneSignal is already loaded properly
-      if (window.OneSignal && typeof window.OneSignal.init === 'function') {
-        console.log('✅ OneSignal already loaded, initializing...');
-        initializeOneSignalSDK();
-        return;
-      }
+      // Use the deferred initialization method
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      
+      const push = function(args: any) {
+        window.OneSignalDeferred.push(args);
+      };
 
-      // Load OneSignal SDK
-      if (!window.OneSignal) {
-        console.log('📥 Loading OneSignal SDK...');
-        window.OneSignal = window.OneSignal || [];
+      // Initialize with deferred loading
+      push(() => {
+        console.log('🎯 Initializing OneSignal Deferred...');
         
-        const script = document.createElement('script');
-        script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-        script.async = true;
-        
-        script.onload = () => {
-          console.log('✅ OneSignal SDK loaded');
-          setTimeout(initializeOneSignalSDK, 1000);
-        };
-        
-        script.onerror = () => {
-          console.error('❌ Failed to load OneSignal SDK');
-        };
-        
-        document.head.appendChild(script);
-      }
-    };
-
-    const initializeOneSignalSDK = () => {
-      try {
-        if (!window.OneSignal || typeof window.OneSignal.init !== 'function') {
-          console.log('⏳ OneSignal not ready yet, retrying...');
-          setTimeout(initializeOneSignalSDK, 1000);
-          return;
-        }
-
-        console.log('🎯 Initializing OneSignal SDK...');
-        
-        window.OneSignal.init({
+        window.OneSignalDeferred.init({
           appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!,
+          safari_web_id: "",
+          notifyButton: {
+            enable: false,
+          },
           allowLocalhostAsSecureOrigin: true,
-          serviceWorkerParam: { scope: '/onesignal/' },
-          serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
           promptOptions: {
             slidedown: {
               enabled: true,
@@ -74,38 +49,43 @@ export default function OneSignalInitializer() {
           }
         });
 
-        console.log('✅ OneSignal initialized successfully');
+        console.log('✅ OneSignal deferred initialization complete');
+      });
 
-        // Safe event listeners
-        if (window.OneSignal.on && typeof window.OneSignal.on === 'function') {
-          window.OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
-            console.log('📱 Subscription changed:', isSubscribed);
-          });
-        }
-
-      } catch (error) {
-        console.error('❌ OneSignal initialization error:', error);
+      // Load the OneSignal SDK
+      if (!document.getElementById('oneSignal-sdk')) {
+        const script = document.createElement('script');
+        script.id = 'oneSignal-sdk';
+        script.src = "https://cdn.onesignal.com/sdks/OneSignalSDK.js";
+        script.async = true;
+        script.onload = () => {
+          console.log('✅ OneSignal SDK loaded successfully');
+        };
+        script.onerror = () => {
+          console.error('❌ Failed to load OneSignal SDK');
+        };
+        document.head.appendChild(script);
       }
     };
 
-    // Start initialization
     initializeOneSignal();
   }, []);
 
-  // Set external user ID
+  // Set external user ID when available
   useEffect(() => {
-    const setExternalUserId = async () => {
-      if (user && window.OneSignal && window.OneSignal.setExternalUserId) {
-        try {
-          await window.OneSignal.setExternalUserId(user.uid);
-          console.log('✅ External user ID set:', user.uid);
-        } catch (error) {
-          console.error('Error setting external user ID:', error);
-        }
+    const setUserId = async () => {
+      if (user) {
+        // Wait for OneSignal to be ready
+        setTimeout(() => {
+          if (window.OneSignalDeferred && typeof window.OneSignalDeferred.setExternalUserId === 'function') {
+            window.OneSignalDeferred.setExternalUserId(user.uid);
+            console.log('✅ External user ID set:', user.uid);
+          }
+        }, 3000);
       }
     };
 
-    setExternalUserId();
+    setUserId();
   }, [user]);
 
   return null;

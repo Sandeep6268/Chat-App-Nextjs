@@ -1,29 +1,27 @@
-// lib/notifications.ts - FINAL
+// lib/notifications.ts - UPDATED
 export class NotificationService {
   
   async requestPermission(): Promise<boolean> {
-    try {
-      if (typeof window === 'undefined' || !window.OneSignal) {
-        return false;
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.OneSignalDeferred) {
+        resolve(false);
+        return;
       }
 
-      // Wait for OneSignal to be ready
-      if (typeof window.OneSignal.showSlidedownPrompt === 'function') {
-        await window.OneSignal.showSlidedownPrompt();
+      try {
+        window.OneSignalDeferred.showSlidedownPrompt();
         
-        // Check subscription after delay
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        if (typeof window.OneSignal.isPushNotificationsEnabled === 'function') {
-          return await window.OneSignal.isPushNotificationsEnabled();
-        }
+        // Check after delay
+        setTimeout(() => {
+          window.OneSignalDeferred.isPushNotificationsEnabled((isSubscribed: boolean) => {
+            resolve(isSubscribed);
+          });
+        }, 3000);
+      } catch (error) {
+        console.error('Permission error:', error);
+        resolve(false);
       }
-      
-      return false;
-    } catch (error) {
-      console.error('Permission error:', error);
-      return false;
-    }
+    });
   }
 
   async sendTestNotification(title: string, message: string, userId?: string) {
