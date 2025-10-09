@@ -37,9 +37,7 @@ export const useNotifications = () => {
       if (payload.notification) {
         const { title, body } = payload.notification;
         new Notification(title || 'New Message', {
-          body,
-          icon: '/icons/icon-192x192.png',
-          badge: '/icons/badge-72x72.png',
+          body
         });
       }
     });

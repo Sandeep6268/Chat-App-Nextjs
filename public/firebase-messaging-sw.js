@@ -23,8 +23,7 @@ messaging.onBackgroundMessage((payload) => {
 
   const notificationOptions = {
     body: body,
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
+    
     data: { 
       chatId: chatId,
       url: chatId ? `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}` : 'https://chat-app-nextjs-gray-eta.vercel.app/chat'
