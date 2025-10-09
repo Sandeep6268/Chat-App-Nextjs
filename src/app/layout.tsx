@@ -1,4 +1,4 @@
-// app/layout.tsx - UPDATED VERSION
+// app/layout.tsx - UPDATED
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -48,9 +48,9 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
         <link rel="shortcut icon" href="/favicon.ico" />
         
-        {/* OneSignal SDK Script */}
-        <script
-          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+        {/* OneSignal SDK - CORRECT SCRIPT */}
+        <script 
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" 
           defer
         />
       </head>

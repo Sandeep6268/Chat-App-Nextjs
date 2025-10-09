@@ -10,6 +10,7 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
+  // Important for OneSignal
   async headers() {
     return [
       {
@@ -20,15 +21,6 @@ const nextConfig = {
             value: '/'
           }
         ]
-      }
-    ];
-  },
-  // Important for OneSignal service worker
-  async rewrites() {
-    return [
-      {
-        source: '/onesignal/:path*',
-        destination: 'https://cdn.onesignal.com/:path*'
       }
     ];
   }
