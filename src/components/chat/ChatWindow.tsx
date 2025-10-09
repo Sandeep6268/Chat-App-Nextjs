@@ -212,13 +212,6 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
           </div>
         </div>
       </div>
- {/* Test Notification Button */}
-          <button
-            onClick={testNotifications}
-            className="bg-blue-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-600"
-          >
-            Test Notifications
-          </button>
       {/* Messages Container */}
       <div className="flex-1 overflow-hidden bg-gradient-to-b from-gray-50 to-white" ref={chatContainerRef}>
         <ScrollToBottom 

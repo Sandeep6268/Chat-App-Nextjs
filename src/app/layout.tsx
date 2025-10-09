@@ -1,11 +1,9 @@
-// app/layout.tsx - UPDATED
-'use client';
+// app/layout.tsx - SERVER COMPONENT (remove 'use client')
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
-import { useEffect } from 'react';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -15,31 +13,39 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
 };
 
+// Client Component for Service Worker
+function ServiceWorkerRegistration() {
+  if (typeof window === 'undefined') return null;
+  
+  return (
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker
+              .register('/firebase-messaging-sw.js')
+              .then((registration) => {
+                console.log('✅ Service Worker registered:', registration);
+              })
+              .catch((error) => {
+                console.log('❌ Service Worker registration failed:', error);
+              });
+          }
+        `,
+      }}
+    />
+  );
+}
+
 export default function RootLayout({
-  
   children,
-  
 }: {
   children: React.ReactNode;
 }) {
-  useEffect(() => {
-    // Register service worker for FCM
-    if ('serviceWorker' in navigator && typeof window !== 'undefined') {
-      navigator.serviceWorker
-        .register('/firebase-messaging-sw.js')
-        .then((registration) => {
-          console.log('✅ Service Worker registered:', registration);
-        })
-        .catch((error) => {
-          console.log('❌ Service Worker registration failed:', error);
-        });
-    }
-  }, []);
   return (
     <html lang="en">
       <head>
-       
-         {/* Pusher Beams SDK */}
+        {/* Pusher Beams SDK */}
         <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script>
         
         {/* Existing meta tags */}
@@ -92,6 +98,9 @@ export default function RootLayout({
             }}
           />
         </AuthProvider>
+        
+        {/* Service Worker Registration */}
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );
