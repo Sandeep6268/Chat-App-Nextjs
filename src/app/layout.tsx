@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
-import OneSignalProvider from '@/components/onesignal/OneSignalProvider';
 import { Toaster } from 'react-hot-toast';
+import PusherProvider from '@/components/pusher/PusherProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,11 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* OneSignal SDK Script */}
-        <script
-          src="https://cdn.onesignal.com/sdks/OneSignalSDK.js"
-          async
-        ></script>
+       
+         {/* Pusher Beams SDK */}
+        <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script>
         
         {/* Existing meta tags */}
         <meta name="application-name" content="Chat App" />
@@ -54,7 +52,7 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          <OneSignalProvider />
+          <PusherProvider />
           {children}
           <Toaster 
             position="top-right"

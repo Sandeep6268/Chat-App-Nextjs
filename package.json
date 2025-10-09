@@ -10,6 +10,7 @@
     "build:vercel": "next build --debug"
   },
   "dependencies": {
+    "@pusher/push-notifications-server": "^1.2.7",
     "firebase-admin": "^13.5.0",
     "next": "15.5.4",
     "react": "19.1.0",
