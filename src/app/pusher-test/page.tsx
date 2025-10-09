@@ -16,15 +16,47 @@ export default function PusherTestPage() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [browserInfo, setBrowserInfo] = useState({
+    notificationSupport: false,
+    serviceWorkerSupport: false,
+    permission: 'default'
+  });
 
   const addDebugInfo = (info: string) => {
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
   };
 
+  // Check browser support on client side only
+  useEffect(() => {
+    const checkBrowserSupport = () => {
+      const supportsNotifications = 'Notification' in window;
+      const supportsServiceWorker = 'serviceWorker' in navigator;
+      const permission = supportsNotifications ? Notification.permission : 'not-supported';
+      
+      setBrowserInfo({
+        notificationSupport: supportsNotifications,
+        serviceWorkerSupport: supportsServiceWorker,
+        permission
+      });
+
+      addDebugInfo(`🌐 Browser: ${navigator.userAgent}`);
+      addDebugInfo(`🔔 Notification support: ${supportsNotifications ? 'Yes' : 'No'}`);
+      addDebugInfo(`📱 Service Worker: ${supportsServiceWorker ? 'Supported' : 'Not supported'}`);
+      addDebugInfo(`🔐 Notification permission: ${permission}`);
+    };
+
+    checkBrowserSupport();
+  }, []);
+
   // Initialize Pusher Beams
   const initializePusher = async () => {
     if (!user) {
       addDebugInfo('❌ User not logged in');
+      return;
+    }
+
+    if (!browserInfo.notificationSupport) {
+      addDebugInfo('❌ Browser does not support notifications');
       return;
     }
 
@@ -145,12 +177,28 @@ export default function PusherTestPage() {
     }
   };
 
-  // Check browser support
-  useEffect(() => {
-    addDebugInfo(`🌐 Browser: ${navigator.userAgent}`);
-    addDebugInfo(`🔔 Notification permission: ${Notification.permission}`);
-    addDebugInfo(`📱 Service Worker: ${'serviceWorker' in navigator ? 'Supported' : 'Not supported'}`);
-  }, []);
+  // Request notification permission manually
+  const requestPermission = async () => {
+    if (!browserInfo.notificationSupport) {
+      addDebugInfo('❌ Notifications not supported in this browser');
+      return;
+    }
+
+    try {
+      addDebugInfo('🔔 Requesting notification permission...');
+      const permission = await Notification.requestPermission();
+      
+      setBrowserInfo(prev => ({ ...prev, permission }));
+      addDebugInfo(`✅ Permission result: ${permission}`);
+      
+      if (permission === 'granted') {
+        // Re-initialize Pusher after permission granted
+        await initializePusher();
+      }
+    } catch (error: any) {
+      addDebugInfo(`❌ Error requesting permission: ${error.message}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 py-8">
@@ -191,12 +239,24 @@ export default function PusherTestPage() {
                 </code>
               </div>
               <div>
-                <span className="font-medium">Browser Permission:</span>{' '}
+                <span className="font-medium">Browser Support:</span>{' '}
+                <span className={browserInfo.notificationSupport ? 'text-green-600' : 'text-red-600'}>
+                  {browserInfo.notificationSupport ? 'Supported ✅' : 'Not Supported ❌'}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium">Permission:</span>{' '}
                 <span className={
-                  Notification.permission === 'granted' ? 'text-green-600' : 
-                  Notification.permission === 'denied' ? 'text-red-600' : 'text-yellow-600'
+                  browserInfo.permission === 'granted' ? 'text-green-600' : 
+                  browserInfo.permission === 'denied' ? 'text-red-600' : 'text-yellow-600'
                 }>
-                  {Notification.permission}
+                  {browserInfo.permission}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium">Service Worker:</span>{' '}
+                <span className={browserInfo.serviceWorkerSupport ? 'text-green-600' : 'text-red-600'}>
+                  {browserInfo.serviceWorkerSupport ? 'Supported ✅' : 'Not Supported ❌'}
                 </span>
               </div>
               <div>
@@ -209,26 +269,34 @@ export default function PusherTestPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <button
               onClick={initializePusher}
-              disabled={status === 'loading' || !user}
-              className="bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
+              disabled={status === 'loading' || !user || !browserInfo.notificationSupport}
+              className="bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               {status === 'loading' ? 'Initializing...' : 'Initialize Pusher'}
             </button>
 
             <button
+              onClick={requestPermission}
+              disabled={!browserInfo.notificationSupport || browserInfo.permission !== 'default'}
+              className="bg-purple-500 text-white py-3 px-4 rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium text-sm"
+            >
+              Request Permission
+            </button>
+
+            <button
               onClick={sendTestNotification}
-              disabled={status === 'loading' || !isSubscribed}
-              className="bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-medium"
+              disabled={status === 'loading' || !isSubscribed || browserInfo.permission !== 'granted'}
+              className="bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               Send Test Notification
             </button>
 
             <button
               onClick={clearPusherState}
-              className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium"
+              className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
             >
               Clear State
             </button>
@@ -274,11 +342,11 @@ export default function PusherTestPage() {
               </li>
               <li className="flex items-start">
                 <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">2</span>
-                <span>Click "Initialize Pusher" to set up push notifications</span>
+                <span>Click "Request Permission" to allow notifications</span>
               </li>
               <li className="flex items-start">
                 <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">3</span>
-                <span>Allow browser notifications when prompted</span>
+                <span>Click "Initialize Pusher" to set up push notifications</span>
               </li>
               <li className="flex items-start">
                 <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">4</span>
@@ -292,11 +360,11 @@ export default function PusherTestPage() {
             <ul className="space-y-3 text-gray-600">
               <li className="flex items-center">
                 <span className="text-green-500 mr-2">✅</span>
-                Pusher Beams should initialize successfully
+                Browser should show notification permission prompt
               </li>
               <li className="flex items-center">
                 <span className="text-green-500 mr-2">✅</span>
-                Browser should show notification permission prompt
+                Pusher Beams should initialize successfully
               </li>
               <li className="flex items-center">
                 <span className="text-green-500 mr-2">✅</span>
@@ -307,6 +375,16 @@ export default function PusherTestPage() {
                 Debug information should show each step's status
               </li>
             </ul>
+
+            {/* Browser Support Info */}
+            <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <h4 className="font-semibold text-yellow-800 mb-1">Browser Requirements</h4>
+              <ul className="text-sm text-yellow-700 space-y-1">
+                <li>• HTTPS required for push notifications</li>
+                <li>• Chrome, Firefox, Edge, Safari (latest versions)</li>
+                <li>• Notifications must be allowed in browser settings</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
