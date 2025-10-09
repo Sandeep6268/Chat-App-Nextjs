@@ -85,64 +85,48 @@ export class UniversalNotificationService {
     }
   }
 
-  // Mobile toast without JSX
+  // Mobile toast without JSX - SIMPLIFIED
   private static showMobileToastNotification(
-    senderName: string, 
-    message: string, 
-    chatId: string
-  ) {
-    return toast.success(
-      this.createMobileToastContent(senderName, message, chatId),
-      {
-        duration: 6000,
-        position: 'top-center',
-        style: {
-          background: 'white',
-          color: 'black',
-          border: '2px solid #3B82F6',
-          borderRadius: '12px',
-          padding: '16px',
-          cursor: 'pointer',
-          minWidth: '300px',
-          maxWidth: '90vw',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-        },
-        icon: '💬',
-      }
-    );
-  }
-
-  // Create mobile toast content (string/object based)
-  private static createMobileToastContent(
     senderName: string, 
     message: string, 
     chatId: string
   ) {
     const truncatedMessage = message.length > 50 ? message.substring(0, 50) + '...' : message;
     
-    return {
-      message: (
-        <div 
-          onClick={() => {
-            window.location.href = `/chat/${chatId}`;
-          }}
-          style={{ cursor: 'pointer' }}
-        >
-          <div style={{ fontWeight: '600', color: '#111827', marginBottom: '4px' }}>
-            {senderName}
-          </div>
-          <div style={{ color: '#374151', fontSize: '14px', marginBottom: '4px' }}>
-            {truncatedMessage}
-          </div>
-          <div style={{ color: '#2563EB', fontSize: '12px', fontWeight: '500' }}>
-            💬 Tap to open chat
-          </div>
+    // Create simple HTML string instead of JSX
+    const toastContent = `
+      <div onclick="window.location.href='/chat/${chatId}'" style="cursor: pointer;">
+        <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">
+          ${senderName}
         </div>
-      )
-    };
+        <div style="color: #374151; font-size: 14px; margin-bottom: 4px;">
+          ${truncatedMessage}
+        </div>
+        <div style="color: #2563EB; font-size: 12px; font-weight: 500;">
+          💬 Tap to open chat
+        </div>
+      </div>
+    `;
+
+    return toast.success(toastContent, {
+      duration: 6000,
+      position: 'top-center',
+      style: {
+        background: 'white',
+        color: 'black',
+        border: '2px solid #3B82F6',
+        borderRadius: '12px',
+        padding: '16px',
+        cursor: 'pointer',
+        minWidth: '300px',
+        maxWidth: '90vw',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+      },
+      icon: '💬',
+    });
   }
 
-  // Fallback toast notification
+  // Fallback toast notification - SIMPLIFIED
   private static showToastNotification(
     senderName: string, 
     message: string, 
@@ -150,41 +134,33 @@ export class UniversalNotificationService {
   ) {
     const truncatedMessage = message.length > 60 ? message.substring(0, 60) + '...' : message;
 
-    toast.success(
-      {
-        message: (
-          <div 
-            style={{ cursor: 'pointer' }}
-            onClick={() => {
-              window.location.href = `/chat/${chatId}`;
-            }}
-          >
-            <div style={{ fontWeight: '600', color: '#111827' }}>
-              {senderName}
-            </div>
-            <div style={{ color: '#374151', fontSize: '14px', marginTop: '4px' }}>
-              {truncatedMessage}
-            </div>
-            <div style={{ color: '#2563EB', fontSize: '12px', marginTop: '4px' }}>
-              Click to open
-            </div>
-          </div>
-        )
+    const toastContent = `
+      <div onclick="window.location.href='/chat/${chatId}'" style="cursor: pointer;">
+        <div style="font-weight: 600; color: #111827;">
+          ${senderName}
+        </div>
+        <div style="color: #374151; font-size: 14px; margin-top: 4px;">
+          ${truncatedMessage}
+        </div>
+        <div style="color: #2563EB; font-size: 12px; margin-top: 4px;">
+          Click to open
+        </div>
+      </div>
+    `;
+
+    toast.success(toastContent, {
+      duration: 5000,
+      position: DeviceUtils.isMobile() ? 'top-center' : 'top-right',
+      style: {
+        background: 'white',
+        color: 'black',
+        border: '2px solid #3B82F6',
+        borderRadius: '12px',
+        padding: '16px',
+        cursor: 'pointer',
+        minWidth: DeviceUtils.isMobile() ? '300px' : '350px',
       },
-      {
-        duration: 5000,
-        position: DeviceUtils.isMobile() ? 'top-center' : 'top-right',
-        style: {
-          background: 'white',
-          color: 'black',
-          border: '2px solid #3B82F6',
-          borderRadius: '12px',
-          padding: '16px',
-          cursor: 'pointer',
-          minWidth: DeviceUtils.isMobile() ? '300px' : '350px',
-        },
-      }
-    );
+    });
 
     return { success: true, type: 'toast' };
   }
