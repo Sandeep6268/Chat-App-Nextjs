@@ -15,7 +15,28 @@ export default function TestNotificationFinal() {
     checkOneSignalConfig();
     checkEnvironment();
   }, [user]);
-
+const checkSubscriptionStatus = async () => {
+  if (window.OneSignal) {
+    try {
+      const userId = await window.OneSignal.getUserId();
+      const isSubscribed = !!userId;
+      
+      setDebugInfo(prev => ({
+        ...prev, 
+        oneSignalSubscribed: isSubscribed,
+        oneSignalUserId: userId
+      }));
+      
+      if (isSubscribed) {
+        setStatus('✅ Subscribed to OneSignal! Notifications should work.');
+      } else {
+        setStatus('❌ NOT subscribed to OneSignal. Subscribe first!');
+      }
+    } catch (error) {
+      console.error('Subscription check error:', error);
+    }
+  }
+};
   const checkOneSignalConfig = async () => {
     try {
       const response = await fetch('/api/check-onesignal-config');
@@ -199,7 +220,12 @@ export default function TestNotificationFinal() {
         >
           Test 1: Send to All Segment
         </button>
-
+        <button
+  onClick={checkSubscriptionStatus}
+  className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+>
+  Check Subscription Status
+</button>
         <button
           onClick={testWithUserTargeting}
           disabled={loading || !user}

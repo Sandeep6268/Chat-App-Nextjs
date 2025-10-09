@@ -1,4 +1,4 @@
-// components/notifications/OneSignalInitializer.tsx - UPDATED
+// components/OneSignalInitializer.tsx - FIXED VERSION
 'use client';
 
 import { useEffect } from 'react';
@@ -15,55 +15,93 @@ export default function OneSignalInitializer() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID) {
-      console.log('❌ OneSignal: Missing app ID or not in browser');
       return;
     }
 
-    // Load OneSignal SDK if not already loaded
-    if (!window.OneSignal) {
+    initializeOneSignal();
+  }, [user]);
+
+  const initializeOneSignal = () => {
+    try {
+      // Clear any existing OneSignal
+      window.OneSignal = undefined;
+      
+      // Load OneSignal script
       const script = document.createElement('script');
       script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
       script.async = true;
-      document.head.appendChild(script);
-
+      
       script.onload = () => {
-        initializeOneSignal();
+        setTimeout(() => {
+          setupOneSignal();
+        }, 1000);
       };
-    } else {
-      initializeOneSignal();
+      
+      document.head.appendChild(script);
+    } catch (error) {
+      console.error('OneSignal initialization error:', error);
     }
+  };
 
-    function initializeOneSignal() {
-      try {
-        window.OneSignal = window.OneSignal || [];
-        
+  const setupOneSignal = () => {
+    try {
+      window.OneSignal = window.OneSignal || [];
+      
+      window.OneSignal.push(function() {
+        // Initialize
+        window.OneSignal.init({
+          appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!,
+          allowLocalhostAsSecureOrigin: true,
+          notifyButton: {
+            enable: false,
+          },
+          promptOptions: {
+            slidedown: {
+              enabled: true,
+              autoPrompt: true,
+              timeDelay: 3,
+              pageViews: 1,
+            }
+          }
+        });
+
+        console.log('✅ OneSignal initialized');
+
+        // Wait for session to initialize
         window.OneSignal.push(function() {
-          window.OneSignal.init({
-            appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!,
-            allowLocalhostAsSecureOrigin: true,
-            notifyButton: {
-              enable: false,
-            },
-          });
-
-          console.log('✅ OneSignal initialized');
-
-          // Set external user ID when user is logged in
+          // Set external user ID when available
           if (user?.uid) {
             window.OneSignal.setExternalUserId(user.uid);
-            console.log('👤 Set external user ID:', user.uid);
+            console.log('👤 External user ID set:', user.uid);
           }
 
-          // Handle notification permission
-          window.OneSignal.getNotificationPermission().then((permission: string) => {
-            console.log('🔔 Notification permission:', permission);
+          // Check subscription status
+          window.OneSignal.getUserId().then((userId: string) => {
+            if (userId) {
+              console.log('🎯 User is subscribed to OneSignal. UserId:', userId);
+            } else {
+              console.log('❌ User is NOT subscribed to OneSignal');
+              // Show subscription prompt
+              showSubscriptionPrompt();
+            }
           });
         });
-      } catch (error) {
-        console.error('❌ OneSignal initialization error:', error);
-      }
+      });
+
+    } catch (error) {
+      console.error('OneSignal setup error:', error);
     }
-  }, [user]);
+  };
+
+  const showSubscriptionPrompt = () => {
+    try {
+      if (window.OneSignal && window.OneSignal.Slidedown) {
+        window.OneSignal.Slidedown.promptPush();
+      }
+    } catch (error) {
+      console.error('Prompt error:', error);
+    }
+  };
 
   return null;
 }

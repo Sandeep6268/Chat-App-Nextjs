@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
-import OneSignalInitializer from '@/components/notifications/OneSignalInitializer';
+import OneSignalInitializer from '@/components/OneSignalInitializer';
 
 const inter = Inter({ subsets: ['latin'] });
 
