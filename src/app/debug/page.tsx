@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { auth, firestore } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore'; // ✅ Fixed imports
 import { NotificationService } from '@/lib/notifications';
 import { requestNotificationPermission } from '@/lib/firebase/client';
 
@@ -19,7 +19,6 @@ export default function DebugPage() {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
     console.log(message);
   };
-  
 
   useEffect(() => {
     // Redirect to home if not in development
@@ -88,6 +87,34 @@ export default function DebugPage() {
     }
   };
 
+  const saveTokenManually = async () => {
+    if (!user || !fcmToken) {
+      addLog('❌ No user or FCM token available');
+      return;
+    }
+
+    try {
+      addLog('💾 Manually saving FCM token...');
+      
+      // Direct Firestore call
+      const userRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userRef, {
+        fcmTokens: arrayUnion(fcmToken),
+        updatedAt: new Date(),
+      });
+      
+      addLog('✅ FCM token manually saved!');
+      
+      // Refresh user data
+      const userDoc = await getDoc(userRef);
+      const userData = userDoc.data();
+      addLog(`📱 User FCM tokens: ${userData?.fcmTokens?.length || 0} tokens`);
+      
+    } catch (error) {
+      addLog(`❌ Error manually saving token: ${error}`);
+    }
+  };
+
   const sendTestNotification = async () => {
     if (!user) {
       addLog('❌ Please login first to send test notification');
@@ -131,33 +158,44 @@ export default function DebugPage() {
       addLog(`❌ Error sending unread notification: ${error}`);
     }
   };
-  const saveTokenManually = async () => {
-  if (!user || !fcmToken) {
-    addLog('❌ No user or FCM token available');
-    return;
-  }
 
-  try {
-    addLog('💾 Manually saving FCM token...');
-    
-    // Direct Firestore call
-    const userRef = doc(firestore, 'users', user.uid);
-    await updateDoc(userRef, {
-      fcmTokens: arrayUnion(fcmToken),
-      updatedAt: new Date(),
-    });
-    
-    addLog('✅ FCM token manually saved!');
-    
-    // Refresh user data
-    const userDoc = await getDoc(userRef);
-    const userData = userDoc.data();
-    addLog(`📱 User FCM tokens: ${userData?.fcmTokens?.length || 0} tokens`);
-    
-  } catch (error) {
-    addLog(`❌ Error manually saving token: ${error}`);
-  }
-};
+  const testNotificationAPI = async () => {
+    if (!user) {
+      addLog('❌ Please login first');
+      return;
+    }
+
+    try {
+      addLog('🔍 Testing notification API directly...');
+      
+      const response = await fetch('/api/notifications/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipientId: user.uid,
+          senderName: 'API Test',
+          messageText: 'This is a direct API test',
+          chatId: 'test-chat-123',
+          senderId: 'api-test',
+          type: 'new_message'
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        addLog(`❌ API Error: ${result.error}`);
+      } else {
+        addLog(`✅ API Success: ${JSON.stringify(result)}`);
+      }
+      
+    } catch (error) {
+      addLog(`❌ API Call Failed: ${error}`);
+    }
+  };
+
   const clearLogs = () => {
     setLogs([]);
     addLog('🗑️ Logs cleared');
@@ -205,13 +243,22 @@ export default function DebugPage() {
             >
               Send Unread Count Notification
             </button>
-          <button 
-  onClick={saveTokenManually}
-  className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
-  disabled={!fcmToken}
->
-  Save Token Manually
-</button>
+
+            <button 
+              onClick={saveTokenManually}
+              className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+              disabled={!fcmToken}
+            >
+              Save Token Manually
+            </button>
+
+            <button 
+              onClick={testNotificationAPI}
+              className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+            >
+              Test API Directly
+            </button>
+
             <button 
               onClick={clearLogs}
               className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
