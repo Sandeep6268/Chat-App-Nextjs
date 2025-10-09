@@ -9,6 +9,9 @@ import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
 import { ChatNotificationService } from '@/lib/chat-notification-service';
+import { UniversalNotificationService } from '@/lib/universal-notifications';
+import { DeviceUtils } from '@/lib/device-utils';
+import toast from 'react-hot-toast';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -44,81 +47,32 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   });
 
   // ✅ DEBUG: Pusher notification function
-  const sendBrowserNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
+  const sendUniversalNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
   try {
-    console.log('🔔 [NOTIFICATION] Attempting to send browser notification:', { 
+    console.log('🔔 [NOTIFICATION] Sending universal notification:', { 
       from: senderName,
-      to: targetUserId, 
+      to: targetUserId,
       chat: chatId,
-      message: message
+      message: message,
+      isMobile: DeviceUtils.isMobile()
     });
 
-    // Check if browser supports notifications
-    if (!('Notification' in window)) {
-      console.log('❌ [NOTIFICATION] Browser does not support notifications');
-      return { success: false, error: 'Browser not supported' };
-    }
+    const result = await UniversalNotificationService.sendNotification(
+      senderName,
+      message,
+      targetUserId,
+      chatId
+    );
 
-    // Check current permission
-    if (Notification.permission === 'denied') {
-      console.log('❌ [NOTIFICATION] Notifications are blocked by user');
-      return { success: false, error: 'Notifications blocked' };
-    }
-
-    // Request permission if needed
-    if (Notification.permission === 'default') {
-      console.log('🔔 [NOTIFICATION] Requesting notification permission...');
-      const permission = await Notification.requestPermission();
-      
-      if (permission !== 'granted') {
-        console.log('❌ [NOTIFICATION] User denied notification permission');
-        return { success: false, error: 'Permission denied' };
-      }
-    }
-
-    // Create and show notification
-    const notification = new Notification(`💬 New message from ${senderName}`, {
-      body: message.length > 100 ? message.substring(0, 100) + '...' : message,
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/icon-72x72.png',
-      tag: chatId, // Group notifications by chat
-      requireInteraction: true,
-      silent: false,
-      data: {
-        chatId,
-        senderName,
-        targetUserId
-      }
-    });
-
-    console.log('✅ [NOTIFICATION] Browser notification shown successfully');
-
-    // Handle notification click
-    notification.onclick = () => {
-      console.log('🎯 [NOTIFICATION] Notification clicked, opening chat...');
-      window.focus();
-      // Navigate to the specific chat
-      window.location.href = `/chat/${chatId}`;
-      notification.close();
-    };
-
-    // Auto close after 7 seconds
-    setTimeout(() => {
-      notification.close();
-    }, 7000);
-
-    return { 
-      success: true, 
-      message: 'Browser notification sent successfully',
-      notificationId: chatId
-    };
+    console.log('✅ [NOTIFICATION] Success:', result);
+    return result;
 
   } catch (error: any) {
-    console.error('❌ [NOTIFICATION] Browser notification failed:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error occurred'
-    };
+    console.error('❌ [NOTIFICATION] Failed:', error);
+    
+    // Fallback to toast
+    UniversalNotificationService.showToastNotification(senderName, message, chatId);
+    return { success: false, error: error.message };
   }
 };
 
@@ -201,7 +155,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                 console.log(`🚀 Sending notification for chat ${chat.id} to user ${otherUserId}`);
                 
                 try {
-                  await sendBrowserNotification(
+                  await sendUniversalNotification(
                     user.displayName || 'Someone',
                     chat.lastMessage || 'New message',
                     otherUserId,
