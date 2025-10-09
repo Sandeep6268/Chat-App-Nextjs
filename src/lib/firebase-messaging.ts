@@ -75,7 +75,7 @@ export const refreshFCMToken = async (): Promise<string | null> => {
   }
 };
 
-// ✅ IMPROVED SERVICE WORKER REGISTRATION
+// Add mobile-specific service worker registration
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     console.warn('🚫 Service Workers not supported');
@@ -83,19 +83,32 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 
   try {
-    // Service worker ko root level pe register karo
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-      scope: '/',
-      updateViaCache: 'none'
-    });
-
-    console.log('✅ Service Worker registered successfully:', registration);
+    let registration;
     
-    // Wait for service worker to be ready
+    // ✅ FIXED: Try different service worker paths for mobile compatibility
+    try {
+      // First try root level
+      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/',
+        updateViaCache: 'none'
+      });
+    } catch (error) {
+      console.log('🔄 Trying alternative service worker path...');
+      // Try with different scope
+      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/firebase-cloud-messaging-push-scope',
+        updateViaCache: 'none'
+      });
+    }
+
+    console.log('✅ Service Worker registered:', registration);
+    
+    // Wait for activation
     if (registration.installing) {
       await new Promise(resolve => {
         registration.installing?.addEventListener('statechange', (e) => {
           if ((e.target as ServiceWorker).state === 'activated') {
+            console.log('✅ Service Worker activated');
             resolve(null);
           }
         });

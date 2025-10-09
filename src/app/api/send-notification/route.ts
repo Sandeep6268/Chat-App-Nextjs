@@ -38,25 +38,48 @@ export async function POST(request: NextRequest) {
     console.log('🎯 [API] Target URL:', targetUrl);
 
     // ✅ FIXED: Simplified payload to avoid duplicates
-    const message = {
-      token: token.trim(),
-      // Remove notification field to prevent duplicates
-      data: {
-        title: title.substring(0, 100),
-        body: messageBody.substring(0, 200),
-        chatId: chatId || '',
-        targetUrl: targetUrl,
-        click_action: targetUrl,
-        timestamp: new Date().toISOString(),
-        
-        ...data
+    // In your API route - Add mobile compatibility
+const message = {
+  token: token.trim(),
+  // ✅ FIXED: Include both notification and data for mobile compatibility
+  notification: {
+    title: title.substring(0, 100),
+    body: messageBody.substring(0, 200),
+  },
+  data: {
+    title: title.substring(0, 100),
+    body: messageBody.substring(0, 200),
+    chatId: chatId || '',
+    targetUrl: targetUrl,
+    click_action: targetUrl,
+    timestamp: new Date().toISOString(),
+    icon: '/icon-192.png',
+    ...data
+  },
+  webpush: {
+    fcm_options: {
+      link: targetUrl,
+    },
+    notification: {
+      // ✅ Mobile specific options
+      vibrate: [200, 100, 200],
+    }
+  },
+  apns: { // ✅ For iOS
+    payload: {
+      aps: {
+        sound: 'default',
+        badge: 1,
       },
-      webpush: {
-        fcm_options: {
-          link: targetUrl,
-        }
-      }
-    };
+    },
+  },
+  android: { // ✅ For Android
+    notification: {
+      sound: 'default',
+      channel_id: 'default',
+    },
+  },
+};
 
     // Send FCM message
     const fcmResponse = await fetch(

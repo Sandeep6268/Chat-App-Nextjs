@@ -1,10 +1,11 @@
 // components/chat/ChatSidebar.tsx
+// ChatSidebar.tsx - FIXED unread count notifications
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePathname, useRouter } from 'next/navigation';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -18,8 +19,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const { user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-const { sendPushNotification,showBrowserNotification } = useNotifications();
-
+  const { sendPushNotification, showBrowserNotification } = useNotifications();
   
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [existingChats, setExistingChats] = useState<Chat[]>([]);
@@ -28,102 +28,169 @@ const { sendPushNotification,showBrowserNotification } = useNotifications();
   const [usersWithoutChats, setUsersWithoutChats] = useState<User[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Refs to track previous values for notification logic
   const previousChatsRef = useRef<Chat[]>([]);
-
-  // Refs to track previous values
   const previousTotalUnreadRef = useRef<number>(0);
+  const notificationCooldownRef = useRef<{[key: string]: number}>({});
 
   // Get current chat ID from URL
   const currentChatId = pathname?.split('/chat/')[1];
 
-  // Fetch users and chats
-// In ChatSidebar.tsx - FIXED useEffect
-useEffect(() => {
-  if (!user) return;
+  // ✅ FIXED: Unread count based notifications
+  useEffect(() => {
+    if (!user) return;
 
-  let unsubscribeChats: (() => void) | undefined;
+    let unsubscribeChats: (() => void) | undefined;
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch users
-      const usersRef = collection(firestore, 'users');
-      const usersQuery = query(usersRef, where('uid', '!=', user.uid));
-      const usersSnapshot = await getDocs(usersQuery);
-      
-      const allUsers = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        uid: doc.data().uid || doc.id,
-        email: doc.data().email || null,
-        displayName: doc.data().displayName || null,
-        photoURL: doc.data().photoURL || null,
-        phoneNumber: doc.data().phoneNumber || null,
-        createdAt: doc.data().createdAt,
-        lastSeen: doc.data().lastSeen,
-        isOnline: doc.data().isOnline || false,
-      } as User));
-      
-      setAvailableUsers(allUsers);
-      
-      // Real-time chats listener
-      unsubscribeChats = getUserChats(user.uid, (chats) => {
-        const userChats = chats.filter(chat => 
-          chat.participants && chat.participants.includes(user.uid)
-        );
+    const fetchData = async () => {
+      try {
+        setLoading(true);
         
-        const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-        const previousTotal = previousTotalUnreadRef.current;
+        // Fetch users
+        const usersRef = collection(firestore, 'users');
+        const usersQuery = query(usersRef, where('uid', '!=', user.uid));
+        const usersSnapshot = await getDocs(usersQuery);
         
-        // ✅ ONLY show browser notifications for CURRENT USER
-        if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
-          const newUnreadCount = totalUnreadMessages - previousTotal;
-          
-          console.log('🔔 [SIDEBAR] Unread increased:', newUnreadCount);
-
-          // Show browser notification to CURRENT USER
-          showBrowserNotification(
-            newUnreadCount === 1 ? '1 New Message 💬' : `${newUnreadCount} New Messages 💬`,
-            `Total: ${totalUnreadMessages} unread message${totalUnreadMessages > 1 ? 's' : ''}`
+        const allUsers = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          uid: doc.data().uid || doc.id,
+          email: doc.data().email || null,
+          displayName: doc.data().displayName || null,
+          photoURL: doc.data().photoURL || null,
+          phoneNumber: doc.data().phoneNumber || null,
+          createdAt: doc.data().createdAt,
+          lastSeen: doc.data().lastSeen,
+          isOnline: doc.data().isOnline || false,
+        } as User));
+        
+        setAvailableUsers(allUsers);
+        
+        // Real-time chats listener
+        unsubscribeChats = getUserChats(user.uid, (chats) => {
+          const userChats = chats.filter(chat => 
+            chat.participants && chat.participants.includes(user.uid)
           );
-        }
-        
-        // Update state
-        previousTotalUnreadRef.current = totalUnreadMessages;
-        previousChatsRef.current = userChats;
-        setTotalUnread(totalUnreadMessages);
-        setExistingChats(userChats);
-        // Calculate users without chats
-        const usersWithExistingChats = new Set<string>();
-        userChats.forEach(chat => {
-          chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
-            usersWithExistingChats.add(pid);
+          
+          // Calculate total unread and detect changes
+          const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+          const previousTotal = previousTotalUnreadRef.current;
+          
+          console.log(`📊 Unread: ${previousTotal} -> ${totalUnreadMessages}`);
+          
+          // ✅ FIXED: Send notification when unread count increases
+          if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
+            const newUnreadCount = totalUnreadMessages - previousTotal;
+            
+            console.log(`🔔 Unread increased by ${newUnreadCount}`);
+            
+            // Find which chats have new unread messages
+            const newUnreadChats = userChats.filter(chat => {
+              const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
+              const previousUnread = previousChat?.unreadCount || 0;
+              return (chat.unreadCount || 0) > previousUnread;
+            });
+            
+            // Send notification for each new unread chat
+            newUnreadChats.forEach(async (chat) => {
+              const otherUserInfo = getOtherUserInfo(chat);
+              const chatUnreadCount = chat.unreadCount || 0;
+              
+              // Cooldown check - avoid spam
+              const now = Date.now();
+              const lastNotification = notificationCooldownRef.current[chat.id] || 0;
+              
+              if (now - lastNotification > 30000) { // 30 second cooldown per chat
+                notificationCooldownRef.current[chat.id] = now;
+                
+                // Send push notification to CURRENT USER about unread messages
+                await sendPushNotification(
+                  user.uid, // ✅ Send to current user
+                  `💬 ${otherUserInfo.name}`,
+                  chatUnreadCount === 1 
+                    ? 'You have 1 new message' 
+                    : `You have ${chatUnreadCount} new messages`,
+                  {
+                    chatId: chat.id,
+                    type: 'unread_message',
+                    senderId: otherUserInfo.uid
+                  }
+                );
+                
+                // Also show browser notification
+                showBrowserNotification(
+                  `💬 ${otherUserInfo.name}`,
+                  chatUnreadCount === 1 
+                    ? 'You have 1 new message' 
+                    : `You have ${chatUnreadCount} new messages`
+                );
+              }
+            });
+          }
+          
+          // Update state
+          previousTotalUnreadRef.current = totalUnreadMessages;
+          previousChatsRef.current = userChats;
+          setTotalUnread(totalUnreadMessages);
+          setExistingChats(userChats);
+          
+          // Calculate users without chats
+          const usersWithExistingChats = new Set<string>();
+          userChats.forEach(chat => {
+            chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
+              usersWithExistingChats.add(pid);
+            });
           });
+          
+          const usersWithoutExistingChats = allUsers.filter(user => 
+            !usersWithExistingChats.has(user.uid)
+          );
+          
+          setUsersWithoutChats(usersWithoutExistingChats);
         });
         
-        const usersWithoutExistingChats = allUsers.filter(user => 
-          !usersWithExistingChats.has(user.uid)
-        );
-        
-        setUsersWithoutChats(usersWithoutExistingChats);
-      });
-      
-    } catch (error) {
-      console.error('Error loading chats:', error);
-    } finally {
-      setLoading(false);
+      } catch (error) {
+        console.error('Error loading chats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      if (unsubscribeChats) {
+        unsubscribeChats();
+      }
+    };
+  }, [user, currentChatId, sendPushNotification, showBrowserNotification]);
+
+  // Get other user's info from chat
+  const getOtherUserInfo = (chat: Chat) => {
+    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+    
+    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
+    
+    if (otherParticipants.length === 0) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
     }
+    
+    const otherUserId = otherParticipants[0];
+    const otherUser = availableUsers.find(u => u.uid === otherUserId);
+    
+    if (!otherUser) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
+    }
+    
+    return {
+      name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
+      email: otherUser.email || '',
+      photoURL: otherUser.photoURL,
+      uid: otherUser.uid
+    };
   };
 
-  fetchData();
-
-  return () => {
-    if (unsubscribeChats) {
-      unsubscribeChats();
-    }
-  };
-}, [user, currentChatId, showBrowserNotification]); // Removed sendPushNotification from dependencies
-
+ 
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {
     if (!searchTerm) return true;
@@ -208,31 +275,7 @@ useEffect(() => {
     }
   };
 
-  // Get other user's info from chat (one-to-one only)
-  const getOtherUserInfo = (chat: Chat) => {
-    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    
-    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
-    
-    if (otherParticipants.length === 0) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    }
-    
-    // For one-on-one chats, get the other user
-    const otherUserId = otherParticipants[0];
-    const otherUser = availableUsers.find(u => u.uid === otherUserId);
-    
-    if (!otherUser) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
-    }
-    
-    return {
-      name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
-      email: otherUser.email || '',
-      photoURL: otherUser.photoURL,
-      uid: otherUser.uid
-    };
-  };
+ 
 
   // Format last message time with better relative timing
   const formatLastMessageTime = (timestamp: { toDate: () => Date } | null) => {
