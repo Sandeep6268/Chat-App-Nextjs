@@ -22,10 +22,10 @@ export default function DebugPage() {
 
   useEffect(() => {
     // Redirect to home if not in development
-    if (process.env.NODE_ENV === 'production' && !window.location.href.includes('localhost')) {
-      window.location.href = '/';
-      return;
-    }
+    // if (process.env.NODE_ENV === 'production' && !window.location.href.includes('localhost')) {
+    //   window.location.href = '/';
+    //   return;
+    // }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
