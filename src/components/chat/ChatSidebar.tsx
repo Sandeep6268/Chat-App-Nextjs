@@ -9,7 +9,6 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
-import { notificationService } from '@/lib/notifications';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -48,12 +47,7 @@ const sendOneSignalNotification = async (senderName: string, message: string, us
       u.displayName === senderName || u.email?.includes(senderName)
     );
     
-    if (otherUser) {
-      await notificationService.sendChatNotification(senderName, message, otherUser.uid);
-      console.log('✅ OneSignal notification sent successfully');
-    } else {
-      console.log('❌ Other user not found for notification');
-    }
+    
   } catch (error) {
     console.error('❌ OneSignal notification failed:', error);
   }

@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
-import OneSignalInitializer from '@/components/notifications/OneSignalInitializer';
+import OneSignalProvider from '@/components/OneSignalProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -56,8 +56,9 @@ export default function RootLayout({
         <link rel="shortcut icon" href="/favicon.ico" />
       </head>
       <body className={inter.className}>
-        {/* <OneSignalInitializer /> */}
         <AuthProvider>
+          <OneSignalProvider>
+
           {children}
           <Toaster 
             position="top-right"
@@ -81,6 +82,7 @@ export default function RootLayout({
               },
             }}
           />
+              </OneSignalProvider>
         </AuthProvider>
       </body>
     </html>
