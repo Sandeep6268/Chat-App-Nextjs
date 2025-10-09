@@ -1,7 +1,9 @@
+// lib/firebase.ts - UPDATE WITH FCM
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getMessaging, isSupported } from 'firebase/messaging';
 
 // 🔥 NEW TESTING PROJECT CONFIG
 const firebaseConfig = {
@@ -36,5 +38,21 @@ const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 
-export { auth, firestore, storage };
+// Initialize Firebase Messaging (only on client side)
+let messaging: any = null;
+
+if (typeof window !== 'undefined') {
+  isSupported().then((supported) => {
+    if (supported) {
+      messaging = getMessaging(app);
+      console.log('✅ Firebase Messaging initialized');
+    } else {
+      console.log('❌ Firebase Messaging not supported in this environment');
+    }
+  }).catch((error) => {
+    console.log('❌ Firebase Messaging initialization failed:', error);
+  });
+}
+
+export { auth, firestore, storage, messaging };
 export default app;

@@ -5,6 +5,8 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { createUserProfile, updateUserPresence } from '@/lib/firestore';
+import { UniversalNotificationService } from '@/lib/universal-notifications';
+
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +26,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     //console.log('AuthProvider mounted - setting up auth listener');
     
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       //console.log('🔥 Auth state changed:', user ? `User: ${user.uid}` : 'No user');
       
@@ -39,6 +42,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             phoneNumber: user.phoneNumber,
           });
           //console.log('✅ User profile created successfully');
+          console.log('👤 User signed in, initializing FCM...');
+    
+    // Initialize FCM for mobile users
+    UniversalNotificationService.initializeFCM(user.uid);
           
           // Set user as online
           await updateUserPresence(user.uid, true);
@@ -55,7 +62,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       //console.log('AuthProvider unmounted - cleaning up');
       unsubscribe();
     };
-  }, []);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, loading }}>

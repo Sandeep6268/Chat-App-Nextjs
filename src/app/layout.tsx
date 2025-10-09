@@ -1,9 +1,11 @@
 // app/layout.tsx - UPDATED
+'use client';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
+import { useEffect } from 'react';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -14,10 +16,25 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({
+  
   children,
+  
 }: {
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    // Register service worker for FCM
+    if ('serviceWorker' in navigator && typeof window !== 'undefined') {
+      navigator.serviceWorker
+        .register('/firebase-messaging-sw.js')
+        .then((registration) => {
+          console.log('✅ Service Worker registered:', registration);
+        })
+        .catch((error) => {
+          console.log('❌ Service Worker registration failed:', error);
+        });
+    }
+  }, []);
   return (
     <html lang="en">
       <head>
