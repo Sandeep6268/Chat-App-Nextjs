@@ -1,5 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+// Add this function before the POST function
+async function getUserDisplayName(userId: string): Promise<string> {
+  try {
+    const { adminFirestore } = await import('@/lib/firebase/admin');
+    const userDoc = await adminFirestore.collection('users').doc(userId).get();
+    
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      return userData?.displayName || userData?.email?.split('@')[0] || 'User';
+    }
+    return 'User';
+  } catch (error) {
+    console.error('Error getting user display name:', error);
+    return 'User';
+  }
+}
 
+// Then in the POST function, update the payload creation:
 export async function POST(request: NextRequest) {
   try {
     const { recipientId, senderName, messageText, chatId, senderId, type } = await request.json();
@@ -9,6 +26,7 @@ export async function POST(request: NextRequest) {
       senderName,
       messageText: messageText?.substring(0, 50),
       chatId,
+      senderId,
       type
     });
 
@@ -19,24 +37,10 @@ export async function POST(request: NextRequest) {
     // Dynamically import Firebase Admin
     const { admin, adminFirestore, adminMessaging } = await import('@/lib/firebase/admin');
 
-    console.log('🔧 Firebase Admin check:', {
-      hasAdmin: !!admin,
-      hasFirestore: !!adminFirestore,
-      hasMessaging: !!adminMessaging,
-      appsLength: admin?.apps?.length || 0
-    });
-
-    // Check if Firebase Admin is properly initialized
-    if (!adminFirestore || !adminMessaging) {
-      console.error('❌ Firebase Admin not properly initialized');
-      return NextResponse.json({ 
-        error: 'Notification service not available',
-        details: 'Firebase Admin services not available'
-      }, { status: 500 });
-    }
+    // Get sender's actual display name
+    const actualSenderName = await getUserDisplayName(senderId);
 
     // Get user's FCM tokens from Firestore
-    console.log('📖 Fetching user data for:', recipientId);
     const userDoc = await adminFirestore.collection('users').doc(recipientId).get();
     
     if (!userDoc.exists) {
@@ -62,12 +66,12 @@ export async function POST(request: NextRequest) {
 
     if (type === 'new_message') {
       payload = {
-        title: senderName || 'New Message',
+        title: actualSenderName || 'New Message', // Use actual name
         body: messageText?.length > 100 ? messageText.substring(0, 100) + '...' : messageText || 'You have a new message',
       };
     } else if (type === 'unread_count') {
       payload = {
-        title: senderName || 'New Messages',
+        title: `${actualSenderName}`, // Use actual name
         body: `You have new unread messages`,
       };
     } else {
@@ -75,19 +79,19 @@ export async function POST(request: NextRequest) {
     }
 
     const messageData = {
-      chatId,
+      chatId: chatId,
       senderId: senderId || 'unknown',
       type: type || 'new_message',
-      click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
+      click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`, // Fixed: specific chat URL
     };
 
-    console.log('📤 Preparing to send notification:', {
-      payload,
-      data: messageData,
-      tokenCount: tokens.length
+    console.log('📤 Sending notification with:', {
+      title: payload.title,
+      body: payload.body,
+      chatId: chatId,
+      redirectUrl: messageData.click_action
     });
 
-    // Create a simpler message format
     const message = {
       tokens,
       notification: payload,
@@ -99,11 +103,39 @@ export async function POST(request: NextRequest) {
         notification: {
           icon: '/icons/icon-192x192.png',
           badge: '/icons/badge-72x72.png',
+          // Add actions for better mobile support
+          actions: [
+            {
+              action: 'open',
+              title: 'Open Chat'
+            },
+            {
+              action: 'dismiss', 
+              title: 'Dismiss'
+            }
+          ]
         },
         fcmOptions: {
-          link: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
+          link: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`, // Fixed link
         },
       },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+            // iOS specific settings
+            'mutable-content': 1
+          },
+        },
+      },
+      android: {
+        notification: {
+          sound: 'default',
+          channel_id: 'fcm_default_channel',
+          click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`
+        }
+      }
     };
 
     console.log('🚀 Sending FCM message...');
@@ -112,10 +144,6 @@ export async function POST(request: NextRequest) {
     console.log('📊 FCM Response:', {
       successCount: response.successCount,
       failureCount: response.failureCount,
-      responses: response.responses.map(r => ({
-        success: r.success,
-        error: r.error?.message || null
-      }))
     });
 
     // Clean up invalid tokens
@@ -145,23 +173,20 @@ export async function POST(request: NextRequest) {
       success: true, 
       sent: response.successCount,
       failed: response.failureCount,
-      tokens: tokens.length
+      tokens: tokens.length,
+      notification: {
+        title: payload.title,
+        body: payload.body,
+        chatId: chatId
+      }
     });
 
   } catch (error) {
     console.error('❌ Error in notification API:', error);
     
-    // More detailed error logging
-    if (error instanceof Error) {
-      console.error('Error name:', error.name);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-    }
-    
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      type: error instanceof Error ? error.name : 'Unknown'
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }
