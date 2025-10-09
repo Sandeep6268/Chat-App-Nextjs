@@ -1,4 +1,4 @@
-// app/api/send-notification/route.ts - FINAL WORKING VERSION
+// app/api/send-notification/route.ts - FIXED AUTHORIZATION
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -15,46 +15,60 @@ export async function POST(request: NextRequest) {
       throw new Error('OneSignal API Key missing');
     }
 
-    // SIMPLIFIED payload - remove problematic icon fields
+    console.log('🔑 API Key Present:', !!process.env.ONESIGNAL_REST_API_KEY);
+    console.log('📱 App ID Present:', !!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID);
+
+    // SIMPLIFIED payload
     const notificationPayload: any = {
       app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
       headings: { en: title },
       contents: { en: message },
       url: url || process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app',
-      priority: 10,
     };
 
     // Target specific user or all users
     if (userId) {
       notificationPayload.include_external_user_ids = [userId];
+      console.log('🎯 Targeting user:', userId);
     } else {
       notificationPayload.included_segments = ['Subscribed Users'];
+      console.log('🎯 Targeting all users');
     }
 
-    console.log('🚀 Sending to OneSignal...');
+    console.log('🚀 Sending to OneSignal API...');
 
-    // OneSignal API call
+    // OneSignal API call with CORRECT authorization
     const oneSignalResponse = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.ONESIGNAL_REST_API_KEY}`,
+        'accept': 'application/json',
       },
       body: JSON.stringify(notificationPayload),
     });
 
-    const result = await oneSignalResponse.json();
+    const responseText = await oneSignalResponse.text();
+    console.log('📡 OneSignal Response Status:', oneSignalResponse.status);
+    console.log('📡 OneSignal Response:', responseText);
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
 
     if (!oneSignalResponse.ok) {
       console.error('❌ OneSignal API Error:', result);
-      throw new Error(result.errors?.join(', ') || 'OneSignal API failed');
+      throw new Error(result.errors?.join(', ') || `API Error: ${oneSignalResponse.status}`);
     }
 
     console.log('✅ OneSignal Success:', result);
     
     return NextResponse.json({
       success: true,
-      message: 'Notification sent',
+      message: 'Notification sent successfully',
       data: result,
     });
 
@@ -65,6 +79,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: error.message || 'Failed to send notification',
+        details: 'Check your OneSignal API key and App ID',
       },
       { status: 500 }
     );
