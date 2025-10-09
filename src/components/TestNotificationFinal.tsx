@@ -1,10 +1,9 @@
-// components/TestNotificationFinal.tsx
+// components/TestNotificationFinal.tsx - UPDATED
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 
-// OneSignal types
 declare global {
   interface Window {
     OneSignal: any;
@@ -16,10 +15,27 @@ export default function TestNotificationFinal() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Checking environment...');
   const [debugInfo, setDebugInfo] = useState<any>({});
+  const [oneSignalInitialized, setOneSignalInitialized] = useState(false);
 
   // Check environment and OneSignal status
   useEffect(() => {
     checkEnvironment();
+    
+    // OneSignal ready listener
+    if (typeof window !== 'undefined') {
+      window.OneSignal = window.OneSignal || [];
+      
+      // Check if OneSignal is already loaded
+      const checkOneSignal = setInterval(() => {
+        if (window.OneSignal && typeof window.OneSignal.init === 'function') {
+          setOneSignalInitialized(true);
+          setStatus('✅ OneSignal SDK Ready');
+          clearInterval(checkOneSignal);
+        }
+      }, 1000);
+
+      return () => clearInterval(checkOneSignal);
+    }
   }, [user]);
 
   const checkEnvironment = async () => {
@@ -31,41 +47,29 @@ export default function TestNotificationFinal() {
       info.apiKey = process.env.ONESIGNAL_REST_API_KEY ? '✅ Present' : '❌ Missing';
       
       if (process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID) {
-        info.appIdValue = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID.substring(0, 10) + '...';
+        info.appIdValue = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
       }
       
-      if (process.env.ONESIGNAL_REST_API_KEY) {
-        info.apiKeyLength = process.env.ONESIGNAL_REST_API_KEY.length;
-        info.apiKeyPrefix = process.env.ONESIGNAL_REST_API_KEY.substring(0, 10) + '...';
-      }
-
       // Check browser support
       info.browserSupport = typeof window !== 'undefined' ? '✅ Supported' : '❌ Not in browser';
       
       if (typeof window !== 'undefined') {
         info.notificationSupport = 'Notification' in window ? '✅ Supported' : '❌ Not supported';
         info.oneSignalLoaded = window.OneSignal ? '✅ Loaded' : '❌ Not loaded';
-        
-        if (window.OneSignal) {
-          const permission = await window.OneSignal.Notifications?.getPermission();
-          info.permission = permission || 'unknown';
-        } else {
-          info.permission = Notification.permission;
-        }
+        info.permission = Notification.permission;
       }
 
       // Check user
       info.user = user ? `✅ ${user.email}` : '❌ Not logged in';
 
       setDebugInfo(info);
-      setStatus('Environment check completed');
 
     } catch (error) {
       setStatus(`Error: ${error}`);
     }
   };
 
-  // Initialize OneSignal
+  // Simple OneSignal Initialization
   const initializeOneSignal = async () => {
     if (typeof window === 'undefined') {
       setStatus('❌ Not in browser environment');
@@ -81,47 +85,24 @@ export default function TestNotificationFinal() {
       setLoading(true);
       setStatus('Initializing OneSignal...');
 
-      // Load OneSignal SDK if not loaded
-      if (!window.OneSignal) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-          script.async = true;
-          
-          script.onload = () => {
-            console.log('✅ OneSignal SDK loaded');
-            resolve(true);
-          };
-          
-          script.onerror = () => {
-            reject(new Error('Failed to load OneSignal SDK'));
-          };
-          
-          document.head.appendChild(script);
-        });
-      }
-
-      // Initialize OneSignal
+      // Simple initialization
       window.OneSignal = window.OneSignal || [];
       
+      // Initialize with basic config
       window.OneSignal.push(function() {
         window.OneSignal.init({
           appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
           allowLocalhostAsSecureOrigin: true,
-          notifyButton: {
-            enable: false,
-          },
         });
-
-        console.log('✅ OneSignal initialized');
-
-        // Set external user ID
+        
+        console.log('OneSignal initialized');
+        setOneSignalInitialized(true);
+        setStatus('✅ OneSignal initialized!');
+        
+        // Set user ID if available
         if (user?.uid) {
           window.OneSignal.setExternalUserId(user.uid);
-          console.log('👤 External user ID set:', user.uid);
         }
-
-        setStatus('✅ OneSignal initialized successfully!');
       });
 
     } catch (error: any) {
@@ -129,29 +110,35 @@ export default function TestNotificationFinal() {
       setStatus(`❌ Initialization failed: ${error.message}`);
     } finally {
       setLoading(false);
+      checkEnvironment();
     }
   };
 
-  // Request notification permission
+  // Simple Permission Request
   const requestPermission = async () => {
     try {
       setLoading(true);
       setStatus('Requesting permission...');
 
-      if (window.OneSignal) {
-        const permission = await window.OneSignal.Notifications.requestPermission();
-        setStatus(permission === 'granted' ? '✅ Permission granted!' : '❌ Permission denied');
+      // Use browser's native Notification API
+      const permission = await Notification.requestPermission();
+      
+      if (permission === 'granted') {
+        setStatus('✅ Browser permission granted!');
+        
+        // Try to initialize OneSignal after permission
+        if (!oneSignalInitialized) {
+          await initializeOneSignal();
+        }
       } else {
-        // Fallback to browser API
-        const permission = await Notification.requestPermission();
-        setStatus(permission === 'granted' ? '✅ Permission granted!' : '❌ Permission denied');
+        setStatus('❌ Permission denied by user');
       }
 
-      await checkEnvironment();
     } catch (error: any) {
       setStatus(`❌ Permission error: ${error.message}`);
     } finally {
       setLoading(false);
+      checkEnvironment();
     }
   };
 
@@ -165,6 +152,17 @@ export default function TestNotificationFinal() {
     try {
       setLoading(true);
       setStatus('Sending test notification...');
+
+      // First check if API key is available
+      const envCheck = await fetch('/api/test-onesignal');
+      const envResult = await envCheck.json();
+      
+      console.log('Environment check:', envResult);
+
+      if (!envResult.hasApiKey) {
+        setStatus('❌ API Key missing on server. Check Vercel environment variables.');
+        return;
+      }
 
       const response = await fetch('/api/send-notification', {
         method: 'POST',
@@ -194,40 +192,27 @@ export default function TestNotificationFinal() {
     }
   };
 
-  // Send test notification to specific user (for chat testing)
-  const sendChatTestNotification = async () => {
-    if (!user) {
-      setStatus('❌ Please login first');
-      return;
-    }
-
+  // Check API Key Status
+  const checkApiKey = async () => {
     try {
       setLoading(true);
-      setStatus('Sending chat test notification...');
-
-      const response = await fetch('/api/send-notification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: 'New Message 💬',
-          message: 'You have a new message in the chat app!',
-          userId: user.uid, // Send to yourself for testing
-        }),
-      });
-
+      setStatus('Checking API key...');
+      
+      const response = await fetch('/api/test-onesignal');
       const result = await response.json();
-
-      if (response.ok) {
-        setStatus('✅ Chat test notification sent!');
-        console.log('Chat notification result:', result);
+      
+      console.log('API Key check:', result);
+      
+      if (result.hasApiKey) {
+        setStatus('✅ API Key is configured on server!');
       } else {
-        throw new Error(result.error || 'Failed to send chat notification');
+        setStatus('❌ API Key missing on server. Check Vercel environment variables.');
       }
+      
+      setDebugInfo(prev => ({ ...prev, serverCheck: result }));
+      
     } catch (error: any) {
-      console.error('Chat notification error:', error);
-      setStatus(`❌ Failed to send: ${error.message}`);
+      setStatus(`❌ Check failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -245,6 +230,9 @@ export default function TestNotificationFinal() {
         <p className={`text-sm ${status.includes('✅') ? 'text-green-600' : status.includes('❌') ? 'text-red-600' : 'text-blue-600'}`}>
           {status}
         </p>
+        {oneSignalInitialized && (
+          <p className="text-green-600 text-sm mt-1">✅ OneSignal Initialized</p>
+        )}
       </div>
 
       {/* Debug Info */}
@@ -258,6 +246,14 @@ export default function TestNotificationFinal() {
       {/* Test Buttons */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <button
+          onClick={checkApiKey}
+          disabled={loading}
+          className="px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors"
+        >
+          🔑 Check API Key
+        </button>
+
+        <button
           onClick={initializeOneSignal}
           disabled={loading}
           className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
@@ -267,7 +263,7 @@ export default function TestNotificationFinal() {
 
         <button
           onClick={requestPermission}
-          disabled={loading || !debugInfo.oneSignalLoaded?.includes('✅')}
+          disabled={loading}
           className="px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors"
         >
           2. Request Permission
@@ -280,34 +276,38 @@ export default function TestNotificationFinal() {
         >
           3. Send Test Notification
         </button>
-
-        <button
-          onClick={sendChatTestNotification}
-          disabled={loading || !user}
-          className="px-4 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
-        >
-          4. Send Chat Test
-        </button>
       </div>
 
       {/* Instructions */}
       <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-        <h3 className="font-semibold mb-2">Testing Instructions:</h3>
-        <ol className="list-decimal list-inside text-sm space-y-1">
-          <li>Click "Initialize OneSignal" first</li>
-          <li>Then "Request Permission" - allow in browser popup</li>
-          <li>Click "Send Test Notification" to test</li>
-          <li>Check browser notifications and OneSignal dashboard</li>
+        <h3 className="font-semibold mb-2">🚨 IMPORTANT FIXES NEEDED:</h3>
+        <ol className="list-decimal list-inside text-sm space-y-2">
+          <li>
+            <strong>API Key Missing:</strong> Vercel mein <code>ONESIGNAL_REST_API_KEY</code> add karo
+          </li>
+          <li>
+            <strong>Steps:</strong> Vercel Dashboard → Settings → Environment Variables
+          </li>
+          <li>
+            <strong>Value:</strong> <code>os_v2_app_3iy5alsnynauxn4iwhfuigtxhb26v2tf243ebxee5accglxhhgtbk4watlihrh6yhn5xx5izvcgc3dnl5mjgx2gzblaxhrl65pjsdtq</code>
+          </li>
+          <li>Redeploy karo after adding environment variable</li>
         </ol>
       </div>
 
-      {/* Environment Check */}
-      <div className="mt-4 text-center">
+      {/* Quick Actions */}
+      <div className="mt-4 text-center space-x-2">
         <button
           onClick={checkEnvironment}
           className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-sm"
         >
           Refresh Status
+        </button>
+        <button
+          onClick={checkApiKey}
+          className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
+        >
+          Check Server API Key
         </button>
       </div>
     </div>
