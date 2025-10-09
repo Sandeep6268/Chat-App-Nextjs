@@ -19,7 +19,8 @@ export default function PusherTestPage() {
   const [browserInfo, setBrowserInfo] = useState({
     notificationSupport: false,
     serviceWorkerSupport: false,
-    permission: 'default'
+    permission: 'default',
+    pusherLoaded: false
   });
 
   const addDebugInfo = (info: string) => {
@@ -32,21 +33,42 @@ export default function PusherTestPage() {
       const supportsNotifications = 'Notification' in window;
       const supportsServiceWorker = 'serviceWorker' in navigator;
       const permission = supportsNotifications ? Notification.permission : 'not-supported';
+      const pusherLoaded = typeof window.PusherPushNotifications !== 'undefined';
       
       setBrowserInfo({
         notificationSupport: supportsNotifications,
         serviceWorkerSupport: supportsServiceWorker,
-        permission
+        permission,
+        pusherLoaded
       });
 
       addDebugInfo(`🌐 Browser: ${navigator.userAgent}`);
       addDebugInfo(`🔔 Notification support: ${supportsNotifications ? 'Yes' : 'No'}`);
       addDebugInfo(`📱 Service Worker: ${supportsServiceWorker ? 'Supported' : 'Not supported'}`);
       addDebugInfo(`🔐 Notification permission: ${permission}`);
+      addDebugInfo(`📦 Pusher SDK: ${pusherLoaded ? 'Loaded' : 'Not loaded'}`);
+
+      // Auto-register service worker if supported
+      if (supportsServiceWorker && permission === 'granted') {
+        registerServiceWorker();
+      }
     };
 
     checkBrowserSupport();
   }, []);
+
+  // Register service worker
+  const registerServiceWorker = async () => {
+    try {
+      addDebugInfo('📋 Registering service worker...');
+      const registration = await navigator.serviceWorker.register('/service-worker.js');
+      addDebugInfo('✅ Service Worker registered successfully');
+      return registration;
+    } catch (error) {
+      addDebugInfo(`❌ Service Worker registration failed: ${error}`);
+      return null;
+    }
+  };
 
   // Initialize Pusher Beams
   const initializePusher = async () => {
@@ -69,6 +91,12 @@ export default function PusherTestPage() {
         addDebugInfo('❌ Pusher SDK not loaded');
         setStatus('error');
         return;
+      }
+
+      // Register service worker first
+      const swRegistration = await registerServiceWorker();
+      if (!swRegistration) {
+        throw new Error('Service Worker registration failed');
       }
 
       // Create beams client
@@ -94,7 +122,8 @@ export default function PusherTestPage() {
       });
 
       if (!tokenResponse.ok) {
-        throw new Error('Failed to get token');
+        const errorData = await tokenResponse.json();
+        throw new Error(errorData.error || 'Failed to get token');
       }
 
       const { token } = await tokenResponse.json();
@@ -135,11 +164,12 @@ export default function PusherTestPage() {
         body: JSON.stringify({
           userId: user.uid,
           title: 'Test Notification 🎉',
-          body: 'This is a test notification from Pusher Beams!',
+          body: 'This is a test notification from Pusher Beams! Click to open the chat app.',
           data: {
             test: true,
             timestamp: new Date().toISOString(),
-            url: window.location.origin
+            url: window.location.origin,
+            type: 'test_notification'
           }
         })
       });
@@ -148,7 +178,7 @@ export default function PusherTestPage() {
       
       if (response.ok) {
         addDebugInfo('✅ Test notification sent successfully!');
-        addDebugInfo(`📨 Response: ${JSON.stringify(result)}`);
+        addDebugInfo(`📨 Pusher Response: ${JSON.stringify(result.result)}`);
       } else {
         addDebugInfo(`❌ Failed to send: ${result.error}`);
       }
@@ -171,6 +201,7 @@ export default function PusherTestPage() {
         await beamsClient.clearAllState();
         addDebugInfo('🧹 Pusher state cleared');
         setIsSubscribed(false);
+        setStatus('idle');
       }
     } catch (error: any) {
       addDebugInfo(`❌ Error clearing state: ${error.message}`);
@@ -192,8 +223,9 @@ export default function PusherTestPage() {
       addDebugInfo(`✅ Permission result: ${permission}`);
       
       if (permission === 'granted') {
-        // Re-initialize Pusher after permission granted
-        await initializePusher();
+        // Register service worker and re-initialize Pusher
+        await registerServiceWorker();
+        setTimeout(() => initializePusher(), 1000);
       }
     } catch (error: any) {
       addDebugInfo(`❌ Error requesting permission: ${error.message}`);
@@ -222,48 +254,54 @@ export default function PusherTestPage() {
         <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6 mb-8">
           {/* User Info */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-gray-800 mb-2">User Information</h3>
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Status:</span>{' '}
-                {user ? (
-                  <span className="text-green-600">Logged In ✅</span>
-                ) : (
-                  <span className="text-red-600">Not Logged In ❌</span>
-                )}
+            <h3 className="font-semibold text-gray-800 mb-2">System Status</h3>
+            <div className="grid md:grid-cols-3 gap-4 text-sm">
+              <div className="space-y-2">
+                <div>
+                  <span className="font-medium">User:</span>{' '}
+                  {user ? (
+                    <span className="text-green-600">Logged In ✅</span>
+                  ) : (
+                    <span className="text-red-600">Not Logged In ❌</span>
+                  )}
+                </div>
+                <div>
+                  <span className="font-medium">Pusher SDK:</span>{' '}
+                  <span className={browserInfo.pusherLoaded ? 'text-green-600' : 'text-red-600'}>
+                    {browserInfo.pusherLoaded ? 'Loaded ✅' : 'Not Loaded ❌'}
+                  </span>
+                </div>
               </div>
-              <div>
-                <span className="font-medium">User ID:</span>{' '}
-                <code className="bg-gray-100 px-2 py-1 rounded">
-                  {user?.uid || 'Not available'}
-                </code>
+              <div className="space-y-2">
+                <div>
+                  <span className="font-medium">Notifications:</span>{' '}
+                  <span className={browserInfo.notificationSupport ? 'text-green-600' : 'text-red-600'}>
+                    {browserInfo.notificationSupport ? 'Supported ✅' : 'Not Supported ❌'}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-medium">Permission:</span>{' '}
+                  <span className={
+                    browserInfo.permission === 'granted' ? 'text-green-600' : 
+                    browserInfo.permission === 'denied' ? 'text-red-600' : 'text-yellow-600'
+                  }>
+                    {browserInfo.permission}
+                  </span>
+                </div>
               </div>
-              <div>
-                <span className="font-medium">Browser Support:</span>{' '}
-                <span className={browserInfo.notificationSupport ? 'text-green-600' : 'text-red-600'}>
-                  {browserInfo.notificationSupport ? 'Supported ✅' : 'Not Supported ❌'}
-                </span>
-              </div>
-              <div>
-                <span className="font-medium">Permission:</span>{' '}
-                <span className={
-                  browserInfo.permission === 'granted' ? 'text-green-600' : 
-                  browserInfo.permission === 'denied' ? 'text-red-600' : 'text-yellow-600'
-                }>
-                  {browserInfo.permission}
-                </span>
-              </div>
-              <div>
-                <span className="font-medium">Service Worker:</span>{' '}
-                <span className={browserInfo.serviceWorkerSupport ? 'text-green-600' : 'text-red-600'}>
-                  {browserInfo.serviceWorkerSupport ? 'Supported ✅' : 'Not Supported ❌'}
-                </span>
-              </div>
-              <div>
-                <span className="font-medium">Pusher Subscription:</span>{' '}
-                <span className={isSubscribed ? 'text-green-600' : 'text-red-600'}>
-                  {isSubscribed ? 'Subscribed ✅' : 'Not Subscribed ❌'}
-                </span>
+              <div className="space-y-2">
+                <div>
+                  <span className="font-medium">Service Worker:</span>{' '}
+                  <span className={browserInfo.serviceWorkerSupport ? 'text-green-600' : 'text-red-600'}>
+                    {browserInfo.serviceWorkerSupport ? 'Supported ✅' : 'Not Supported ❌'}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-medium">Subscription:</span>{' '}
+                  <span className={isSubscribed ? 'text-green-600' : 'text-red-600'}>
+                    {isSubscribed ? 'Active ✅' : 'Inactive ❌'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -272,7 +310,7 @@ export default function PusherTestPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <button
               onClick={initializePusher}
-              disabled={status === 'loading' || !user || !browserInfo.notificationSupport}
+              disabled={status === 'loading' || !user || !browserInfo.pusherLoaded}
               className="bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               {status === 'loading' ? 'Initializing...' : 'Initialize Pusher'}
@@ -331,6 +369,29 @@ export default function PusherTestPage() {
           </div>
         </div>
 
+        {/* Quick Fix Section */}
+        {!browserInfo.pusherLoaded && (
+          <div className="max-w-4xl mx-auto mb-6">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h3 className="font-semibold text-yellow-800 mb-2">Pusher SDK Not Loaded</h3>
+              <p className="text-yellow-700 text-sm mb-3">
+                The Pusher Beams SDK hasn't loaded properly. This might be due to:
+              </p>
+              <ul className="text-yellow-700 text-sm space-y-1 list-disc list-inside">
+                <li>Slow network connection</li>
+                <li>Ad blocker blocking the SDK</li>
+                <li>Script loading issue</li>
+              </ul>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-3 bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors text-sm"
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Instructions */}
         <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-lg p-6">
@@ -375,16 +436,6 @@ export default function PusherTestPage() {
                 Debug information should show each step's status
               </li>
             </ul>
-
-            {/* Browser Support Info */}
-            <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-              <h4 className="font-semibold text-yellow-800 mb-1">Browser Requirements</h4>
-              <ul className="text-sm text-yellow-700 space-y-1">
-                <li>• HTTPS required for push notifications</li>
-                <li>• Chrome, Firefox, Edge, Safari (latest versions)</li>
-                <li>• Notifications must be allowed in browser settings</li>
-              </ul>
-            </div>
           </div>
         </div>
       </div>
