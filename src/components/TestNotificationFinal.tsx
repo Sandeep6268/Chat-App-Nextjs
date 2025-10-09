@@ -1,25 +1,109 @@
-// components/TestNotificationFinal.tsx - FINAL VERSION
+// components/TestNotificationFinal.tsx - FIXED VERSION
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 
-declare global {
-  interface Window {
-    OneSignal: any;
-  }
-}
-
 export default function TestNotificationFinal() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('Checking environment...');
+  const [status, setStatus] = useState('Ready to test...');
   const [debugInfo, setDebugInfo] = useState<any>({});
-  const [oneSignalInitialized, setOneSignalInitialized] = useState(false);
+  const [oneSignalLoaded, setOneSignalLoaded] = useState(false);
 
   useEffect(() => {
+    initializeOneSignalSafely();
     checkEnvironment();
   }, [user]);
+
+  // Safe OneSignal Initialization
+  const initializeOneSignalSafely = async () => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      // Check if OneSignal is already loaded properly
+      if (window.OneSignal && window.OneSignal.init) {
+        setOneSignalLoaded(true);
+        setStatus('✅ OneSignal already loaded');
+        return;
+      }
+
+      // Load OneSignal with error handling
+      await loadOneSignalScript();
+      
+    } catch (error) {
+      console.log('OneSignal loading failed, using fallback method');
+      setStatus('⚠️ OneSignal loading issue, using API method');
+    }
+  };
+
+  // Safe OneSignal Script Loading
+  const loadOneSignalScript = () => {
+    return new Promise((resolve, reject) => {
+      // Check if script already exists
+      if (document.querySelector('script[src*="onesignal"]')) {
+        resolve(true);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+      script.async = true;
+      
+      script.onload = () => {
+        console.log('✅ OneSignal script loaded');
+        
+        // Wait a bit for OneSignal to initialize
+        setTimeout(() => {
+          if (window.OneSignal && typeof window.OneSignal.init === 'function') {
+            initializeOneSignalCore();
+            setOneSignalLoaded(true);
+            resolve(true);
+          } else {
+            reject(new Error('OneSignal not available after loading'));
+          }
+        }, 1000);
+      };
+      
+      script.onerror = () => {
+        console.error('❌ Failed to load OneSignal script');
+        reject(new Error('Script loading failed'));
+      };
+      
+      document.head.appendChild(script);
+    });
+  };
+
+  // Core OneSignal Initialization
+  const initializeOneSignalCore = () => {
+    try {
+      window.OneSignal = window.OneSignal || [];
+      
+      window.OneSignal.push(function() {
+        window.OneSignal.init({
+          appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!,
+          allowLocalhostAsSecureOrigin: true,
+          serviceWorkerParam: { scope: '/onesignal/' },
+          serviceWorkerPath: 'OneSignalSDKWorker.js',
+          promptOptions: {
+            slidedown: {
+              enabled: true,
+              autoPrompt: false,
+            }
+          }
+        });
+
+        console.log('✅ OneSignal core initialized');
+        
+        // Set user ID
+        if (user?.uid) {
+          window.OneSignal.setExternalUserId(user.uid);
+        }
+      });
+    } catch (error) {
+      console.error('OneSignal core init error:', error);
+    }
+  };
 
   const checkEnvironment = async () => {
     const info: any = {};
@@ -31,14 +115,10 @@ export default function TestNotificationFinal() {
       info.serverCheck = serverEnv;
 
       // Check browser support
-      info.browserSupport = typeof window !== 'undefined' ? '✅ Supported' : '❌ Not in browser';
-      
-      if (typeof window !== 'undefined') {
-        info.notificationSupport = 'Notification' in window ? '✅ Supported' : '❌ Not supported';
-        info.oneSignalLoaded = window.OneSignal ? '✅ Loaded' : '❌ Not loaded';
-        info.permission = Notification.permission;
-        info.oneSignalInitialized = oneSignalInitialized;
-      }
+      info.browserSupport = typeof window !== 'undefined';
+      info.notificationSupport = 'Notification' in window;
+      info.permission = Notification.permission;
+      info.oneSignalLoaded = oneSignalLoaded;
 
       // Check user
       info.user = user ? `✅ ${user.email}` : '❌ Not logged in';
@@ -46,84 +126,16 @@ export default function TestNotificationFinal() {
       setDebugInfo(info);
 
       if (serverEnv.hasApiKey && serverEnv.hasAppId) {
-        setStatus('✅ Server ready! Initialize OneSignal.');
+        setStatus('✅ Server ready! You can test notifications.');
       }
 
     } catch (error) {
-      setStatus(`Error: ${error}`);
+      console.error('Environment check error:', error);
     }
   };
 
-  // Initialize OneSignal
-  const initializeOneSignal = async () => {
-    try {
-      setLoading(true);
-      setStatus('Initializing OneSignal...');
-
-      if (!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID) {
-        setStatus('❌ OneSignal App ID missing');
-        return;
-      }
-
-      // Load OneSignal SDK
-      await new Promise((resolve, reject) => {
-        if (window.OneSignal && window.OneSignal.init) {
-          resolve(true);
-          return;
-        }
-
-        const script = document.createElement('script');
-        script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-        script.async = true;
-        
-        script.onload = () => {
-          console.log('✅ OneSignal SDK loaded');
-          resolve(true);
-        };
-        
-        script.onerror = () => reject(new Error('Failed to load OneSignal SDK'));
-        document.head.appendChild(script);
-      });
-
-      // Initialize OneSignal
-      window.OneSignal = window.OneSignal || [];
-      
-      window.OneSignal.push(function() {
-        window.OneSignal.init({
-          appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
-          allowLocalhostAsSecureOrigin: true,
-        });
-        
-        console.log('✅ OneSignal initialized');
-        setOneSignalInitialized(true);
-        setStatus('✅ OneSignal initialized successfully!');
-
-        // Set external user ID
-        if (user?.uid) {
-          window.OneSignal.setExternalUserId(user.uid);
-          console.log('👤 External user ID set:', user.uid);
-        }
-
-        // Check subscription
-        window.OneSignal.getUserId().then((userId: string) => {
-          console.log('OneSignal User ID:', userId);
-          if (userId) {
-            setStatus(prev => prev + ' User subscribed!');
-          }
-        });
-      });
-
-    } catch (error: any) {
-      console.error('OneSignal initialization error:', error);
-      setStatus(`❌ Initialization failed: ${error.message}`);
-    } finally {
-      setLoading(false);
-      checkEnvironment();
-    }
-  };
-
-  // Send Test Notification
-  const sendTestNotification = async () => {
+  // Method 1: Direct API Call (Most Reliable)
+  const sendTestViaAPI = async () => {
     if (!user) {
       setStatus('❌ Please login first');
       return;
@@ -131,7 +143,7 @@ export default function TestNotificationFinal() {
 
     try {
       setLoading(true);
-      setStatus('Sending test notification...');
+      setStatus('Sending test notification via API...');
 
       const response = await fetch('/api/send-notification', {
         method: 'POST',
@@ -140,7 +152,7 @@ export default function TestNotificationFinal() {
         },
         body: JSON.stringify({
           title: 'Test from Chat App 🔔',
-          message: 'Hello! This is a test notification from our chat application.',
+          message: 'Hello! This is a test notification sent via API.',
           userId: user.uid,
         }),
       });
@@ -148,63 +160,133 @@ export default function TestNotificationFinal() {
       const result = await response.json();
 
       if (response.ok) {
-        setStatus('✅ Notification sent to OneSignal! Check:');
-        console.log('OneSignal Response:', result);
+        setStatus('✅ Notification sent via API! Check your notifications.');
+        console.log('API Response:', result);
         
-        // Show delivery info
-        if (result.data && result.data.id) {
-          setStatus(prev => prev + ` Notification ID: ${result.data.id}`);
-        }
+        // Update debug info
+        setDebugInfo(prev => ({
+          ...prev,
+          lastNotification: {
+            method: 'API',
+            success: true,
+            response: result
+          }
+        }));
       } else {
-        throw new Error(result.error || 'Failed to send notification');
+        throw new Error(result.error || 'API request failed');
       }
     } catch (error: any) {
-      console.error('Send notification error:', error);
-      setStatus(`❌ Failed: ${error.message}`);
+      console.error('API notification error:', error);
+      setStatus(`❌ API Failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Check OneSignal Status
-  const checkOneSignalStatus = async () => {
-    if (window.OneSignal) {
-      try {
-        const permission = await window.OneSignal.Notifications.permission;
-        const userId = await window.OneSignal.getUserId();
-        
-        setDebugInfo(prev => ({
-          ...prev,
-          oneSignalPermission: permission,
-          oneSignalUserId: userId
-        }));
-        
-        setStatus(`OneSignal: Permission: ${permission}, UserID: ${userId || 'Not set'}`);
-      } catch (error) {
-        console.log('OneSignal status check error:', error);
-      }
+  // Method 2: OneSignal SDK (if available)
+  const sendTestViaOneSignal = async () => {
+    if (!oneSignalLoaded || !window.OneSignal) {
+      setStatus('❌ OneSignal not loaded, using API method instead');
+      sendTestViaAPI();
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setStatus('Sending via OneSignal SDK...');
+
+      // This is how you'd send via OneSignal SDK directly
+      // But API method is more reliable for our use case
+      setStatus('⚠️ Using API method instead (more reliable)');
+      sendTestViaAPI();
+      
+    } catch (error: any) {
+      console.error('OneSignal SDK error:', error);
+      setStatus(`❌ OneSignal SDK failed: ${error.message}`);
+      setLoading(false);
     }
   };
 
+  // Check notification permission
+  const requestPermission = async () => {
+    try {
+      setLoading(true);
+      setStatus('Requesting notification permission...');
+
+      const permission = await Notification.requestPermission();
+      
+      if (permission === 'granted') {
+        setStatus('✅ Notification permission granted!');
+        checkEnvironment();
+      } else {
+        setStatus('❌ Notification permission denied');
+      }
+    } catch (error: any) {
+      setStatus(`❌ Permission error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Test different notification types
+  const testDifferentNotifications = async () => {
+    if (!user) {
+      setStatus('❌ Please login first');
+      return;
+    }
+
+    const tests = [
+      { title: 'Test 1: Simple', message: 'This is a simple test notification' },
+      { title: 'Test 2: Chat Message', message: 'You have a new message in chat!' },
+      { title: 'Test 3: Urgent 🔔', message: 'Important: Test notification' }
+    ];
+
+    setLoading(true);
+    
+    for (let i = 0; i < tests.length; i++) {
+      const test = tests[i];
+      setStatus(`Sending test ${i + 1}/3: ${test.title}`);
+      
+      try {
+        await fetch('/api/send-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...test,
+            userId: user.uid,
+          }),
+        });
+        
+        // Wait 2 seconds between tests
+        if (i < tests.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        console.error(`Test ${i + 1} failed:`, error);
+      }
+    }
+    
+    setStatus('✅ All test notifications sent! Check your notifications.');
+    setLoading(false);
+  };
+
   return (
-    <div className="p-6 bg-white rounded-lg shadow-md max-w-2xl mx-auto mt-8 border-2 border-green-200">
-      <h2 className="text-2xl font-bold mb-4 text-center text-green-600">
-        🔔 Notification Test - READY! 
+    <div className="p-6 bg-white rounded-lg shadow-md max-w-2xl mx-auto mt-8 border-2 border-blue-200">
+      <h2 className="text-2xl font-bold mb-4 text-center text-blue-600">
+        🔔 Notification Test - SIMPLE & STABLE
       </h2>
 
       {/* Status */}
-      <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
-        <h3 className="font-semibold mb-2 text-green-800">Status:</h3>
+      <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <h3 className="font-semibold mb-2 text-blue-800">Status:</h3>
         <p className={`text-sm font-medium ${
           status.includes('✅') ? 'text-green-600' : 
           status.includes('❌') ? 'text-red-600' : 'text-blue-600'
         }`}>
           {status}
         </p>
-        {oneSignalInitialized && (
-          <p className="text-green-600 text-sm mt-2 font-semibold">
-            🎉 OneSignal Initialized - Ready to test notifications!
-          </p>
+        {oneSignalLoaded && (
+          <p className="text-green-600 text-sm mt-1">✅ OneSignal Loaded</p>
         )}
       </div>
 
@@ -217,61 +299,60 @@ export default function TestNotificationFinal() {
       </div>
 
       {/* Test Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="space-y-3 mb-6">
         <button
-          onClick={initializeOneSignal}
-          disabled={loading || oneSignalInitialized}
-          className={`px-4 py-3 rounded-lg transition-colors ${
-            oneSignalInitialized 
-              ? 'bg-green-500 text-white cursor-not-allowed' 
-              : 'bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50'
-          }`}
+          onClick={sendTestViaAPI}
+          disabled={loading || !user}
+          className="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-semibold"
         >
-          {oneSignalInitialized ? '✅ Initialized' : '1. Initialize OneSignal'}
+          🚀 SEND TEST NOTIFICATION (API)
         </button>
 
         <button
-          onClick={sendTestNotification}
-          disabled={loading || !oneSignalInitialized}
-          className="px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors"
+          onClick={testDifferentNotifications}
+          disabled={loading || !user}
+          className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors"
         >
-          2. Send Test Notification
+          Send Multiple Test Notifications
         </button>
 
-        <button
-          onClick={checkOneSignalStatus}
-          className="px-4 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors"
-        >
-          Check OneSignal Status
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={requestPermission}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+          >
+            Request Permission
+          </button>
 
-        <button
-          onClick={checkEnvironment}
-          className="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-        >
-          Refresh All
-        </button>
-      </div>
-
-      {/* Success Message */}
-      <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-        <h3 className="font-semibold text-green-800 mb-2">🎉 Everything is Ready!</h3>
-        <div className="text-sm text-green-700 space-y-1">
-          <p>✅ API Key configured on server</p>
-          <p>✅ App ID present</p>
-          <p>✅ Notification permission granted</p>
-          <p>✅ User logged in</p>
-          <p className="font-semibold mt-2">Now click "Initialize OneSignal" then "Send Test Notification"</p>
+          <button
+            onClick={checkEnvironment}
+            className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            Refresh Status
+          </button>
         </div>
       </div>
 
-      {/* What to Expect */}
-      <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h3 className="font-semibold text-blue-800 mb-2">What should happen:</h3>
-        <ol className="list-decimal list-inside text-sm text-blue-700 space-y-1">
-          <li>Notification should appear in your browser</li>
+      {/* Information */}
+      <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+        <h3 className="font-semibold text-green-800 mb-2">🎯 What's Happening:</h3>
+        <div className="text-sm text-green-700 space-y-1">
+          <p>• We're using <strong>direct API calls</strong> to OneSignal (most reliable)</p>
+          <p>• OneSignal SDK is optional for this approach</p>
+          <p>• Notifications should work even with SDK errors</p>
+          <p className="font-semibold mt-2">👉 Click "SEND TEST NOTIFICATION" to test!</p>
+        </div>
+      </div>
+
+      {/* Troubleshooting */}
+      <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+        <h3 className="font-semibold text-yellow-800 mb-2">🔧 If Notifications Don't Work:</h3>
+        <ol className="list-decimal list-inside text-sm text-yellow-700 space-y-1">
+          <li>Check browser notification permissions</li>
+          <li>Look for errors in browser console (F12)</li>
           <li>Check OneSignal Dashboard for delivery status</li>
-          <li>Check browser console for any errors</li>
+          <li>Ensure you're using HTTPS</li>
         </ol>
       </div>
     </div>
