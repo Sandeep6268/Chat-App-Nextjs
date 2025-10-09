@@ -76,7 +76,7 @@ export default function PusherTestPage() {
     }
   };
 
-  // Initialize Pusher Beams with CORRECT token provider
+  // Initialize Pusher Beams
   const initializePusher = async () => {
     if (!user) {
       addDebugInfo('❌ User not logged in');
@@ -110,37 +110,47 @@ export default function PusherTestPage() {
         instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
       });
 
-      // CORRECTED: Set up proper token provider
-      beamsClient.setUserId(user.uid, {
+      // Set up token provider with proper error handling
+      await beamsClient.setUserId(user.uid, {
         async fetchToken(userId) {
           addDebugInfo(`🔐 Fetching token for user: ${userId}`);
           
-          const response = await fetch('/api/pusher/token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ userId }),
-          });
+          try {
+            const response = await fetch('/api/pusher/token', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ userId }),
+            });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to get token');
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const tokenData = await response.json();
+            
+            if (!tokenData.token) {
+              throw new Error('No token received from server');
+            }
+
+            addDebugInfo('✅ Token received successfully');
+            return tokenData.token;
+            
+          } catch (error: any) {
+            addDebugInfo(`❌ Token fetch error: ${error.message}`);
+            throw error;
           }
-
-          const tokenData = await response.json();
-          addDebugInfo('✅ Token received successfully');
-          
-          return tokenData.token;
         },
         
         async onTokenInvalidated(userId) {
           addDebugInfo(`🔄 Token invalidated for user: ${userId}`);
-          // You can re-fetch token here if needed
         }
       });
 
       // Start beams client
+      addDebugInfo('🔄 Starting Beams client...');
       await beamsClient.start();
       addDebugInfo('✅ Beams client started');
 
@@ -148,22 +158,34 @@ export default function PusherTestPage() {
       const state = await beamsClient.getRegistrationState();
       addDebugInfo(`📊 Registration state: ${state}`);
 
-      setIsSubscribed(state === 'PERMISSION_GRANTED');
-      setStatus('success');
-      
-      if (state === 'PERMISSION_GRANTED') {
+      const subscribed = state === 'PERMISSION_GRANTED';
+      setIsSubscribed(subscribed);
+
+      if (subscribed) {
         addDebugInfo('🎉 Pusher Beams initialized successfully! Ready to receive notifications.');
         
         // Get device info
         const deviceId = await beamsClient.getDeviceId();
         addDebugInfo(`📱 Device ID: ${deviceId}`);
+        
+        setStatus('success');
       } else {
-        addDebugInfo('⚠️ Pusher initialized but notifications not granted');
+        addDebugInfo('⚠️ Pusher initialized but notifications permission not granted');
+        addDebugInfo('💡 Tip: Make sure notifications are allowed in browser settings');
+        setStatus('error');
       }
 
     } catch (error: any) {
       console.error('Pusher initialization error:', error);
       addDebugInfo(`❌ Error: ${error.message}`);
+      
+      // More specific error messages
+      if (error.message.includes('401')) {
+        addDebugInfo('🔑 401 Error: Token authentication failed. Check Pusher credentials.');
+      } else if (error.message.includes('JWT')) {
+        addDebugInfo('🔑 JWT Error: Invalid token format. Server token generation issue.');
+      }
+      
       setStatus('error');
     }
   };
@@ -198,7 +220,7 @@ export default function PusherTestPage() {
       
       if (response.ok) {
         addDebugInfo('✅ Test notification sent successfully!');
-        addDebugInfo(`📨 Notification ID: ${result.result.publishId}`);
+        addDebugInfo(`📨 Notification ID: ${result.result?.publishId || 'Unknown'}`);
         
         // Show local notification for immediate feedback
         if ('Notification' in window && Notification.permission === 'granted') {
@@ -209,6 +231,10 @@ export default function PusherTestPage() {
         }
       } else {
         addDebugInfo(`❌ Failed to send: ${result.error}`);
+        
+        if (result.error?.includes('401')) {
+          addDebugInfo('🔑 401 Error: Check Pusher Secret Key configuration');
+        }
       }
 
       setStatus('success');
@@ -236,30 +262,6 @@ export default function PusherTestPage() {
     }
   };
 
-  // Request notification permission manually
-  const requestPermission = async () => {
-    if (!browserInfo.notificationSupport) {
-      addDebugInfo('❌ Notifications not supported in this browser');
-      return;
-    }
-
-    try {
-      addDebugInfo('🔔 Requesting notification permission...');
-      const permission = await Notification.requestPermission();
-      
-      setBrowserInfo(prev => ({ ...prev, permission }));
-      addDebugInfo(`✅ Permission result: ${permission}`);
-      
-      if (permission === 'granted') {
-        // Register service worker and re-initialize Pusher
-        await registerServiceWorker();
-        setTimeout(() => initializePusher(), 1000);
-      }
-    } catch (error: any) {
-      addDebugInfo(`❌ Error requesting permission: ${error.message}`);
-    }
-  };
-
   // Stop Pusher Beams
   const stopPusher = async () => {
     try {
@@ -271,9 +273,23 @@ export default function PusherTestPage() {
         await beamsClient.stop();
         addDebugInfo('🛑 Pusher Beams stopped');
         setIsSubscribed(false);
+        setStatus('idle');
       }
     } catch (error: any) {
       addDebugInfo(`❌ Error stopping Pusher: ${error.message}`);
+    }
+  };
+
+  // Check Pusher credentials
+  const checkCredentials = () => {
+    addDebugInfo('🔑 Checking Pusher credentials...');
+    addDebugInfo(`Instance ID: ${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID ? '✅ Set' : '❌ Missing'}`);
+    addDebugInfo(`Secret Key: ${process.env.PUSHER_BEAMS_SECRET_KEY ? '✅ Set' : '❌ Missing'}`);
+    
+    if (!process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID || !process.env.PUSHER_BEAMS_SECRET_KEY) {
+      addDebugInfo('❌ Pusher credentials missing. Check environment variables.');
+    } else {
+      addDebugInfo('✅ Pusher credentials configured');
     }
   };
 
@@ -352,7 +368,7 @@ export default function PusherTestPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <button
               onClick={initializePusher}
               disabled={status === 'loading' || !user || !browserInfo.pusherLoaded}
@@ -369,20 +385,19 @@ export default function PusherTestPage() {
               Send Test Notification
             </button>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={clearPusherState}
-                className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
-              >
-                Clear State
-              </button>
-              <button
-                onClick={stopPusher}
-                className="bg-red-500 text-white py-3 px-4 rounded-lg hover:bg-red-600 transition-colors font-medium text-sm"
-              >
-                Stop Beams
-              </button>
-            </div>
+            <button
+              onClick={checkCredentials}
+              className="bg-yellow-500 text-white py-3 px-4 rounded-lg hover:bg-yellow-600 transition-colors font-medium text-sm"
+            >
+              Check Credentials
+            </button>
+
+            <button
+              onClick={clearPusherState}
+              className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
+            >
+              Clear State
+            </button>
           </div>
 
           {/* Debug Information */}
@@ -414,50 +429,54 @@ export default function PusherTestPage() {
           </div>
         </div>
 
-        {/* Instructions */}
-        <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
+        {/* Troubleshooting Section */}
+        <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Testing Steps</h3>
-            <ol className="space-y-3 text-gray-600">
-              <li className="flex items-start">
-                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">1</span>
-                <span>Make sure you're logged in to your chat app</span>
-              </li>
-              <li className="flex items-start">
-                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">2</span>
-                <span>Click "Initialize Pusher" to set up push notifications</span>
-              </li>
-              <li className="flex items-start">
-                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">3</span>
-                <span>Allow browser notifications when prompted</span>
-              </li>
-              <li className="flex items-start">
-                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">4</span>
-                <span>Click "Send Test Notification" to verify it works</span>
-              </li>
-            </ol>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Common Issues & Solutions</h3>
+            <div className="space-y-4">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <h4 className="font-semibold text-red-800 mb-1">401 Unauthorized Error</h4>
+                <p className="text-red-700 text-sm">
+                  This means Pusher can't verify your token. Solutions:
+                </p>
+                <ul className="text-red-700 text-sm mt-1 space-y-1 list-disc list-inside">
+                  <li>Check if Pusher Beams Secret Key is correct</li>
+                  <li>Verify Instance ID matches your Pusher dashboard</li>
+                  <li>Ensure server-side token generation is working</li>
+                </ul>
+              </div>
+              
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <h4 className="font-semibold text-yellow-800 mb-1">Permission Issues</h4>
+                <ul className="text-yellow-700 text-sm space-y-1 list-disc list-inside">
+                  <li>Make sure browser notifications are allowed</li>
+                  <li>Check if service worker is properly registered</li>
+                  <li>Try in incognito mode to rule out extensions</li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Troubleshooting</h3>
-            <ul className="space-y-3 text-gray-600">
-              <li className="flex items-center">
-                <span className="text-yellow-500 mr-2">⚠️</span>
-                If "Initialize Pusher" fails, try "Clear State" and restart
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Verification Steps</h3>
+            <ol className="space-y-3 text-gray-600">
+              <li className="flex items-start">
+                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">1</span>
+                <span>Click "Check Credentials" to verify environment variables</span>
               </li>
-              <li className="flex items-center">
-                <span className="text-yellow-500 mr-2">⚠️</span>
-                Make sure notifications are allowed in browser settings
+              <li className="flex items-start">
+                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">2</span>
+                <span>Click "Initialize Pusher" and check debug logs</span>
               </li>
-              <li className="flex items-center">
-                <span className="text-yellow-500 mr-2">⚠️</span>
-                Check that service worker is registered (see debug log)
+              <li className="flex items-start">
+                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">3</span>
+                <span>If 401 error appears, check Pusher dashboard settings</span>
               </li>
-              <li className="flex items-center">
-                <span className="text-yellow-500 mr-2">⚠️</span>
-                Try refreshing the page if issues persist
+              <li className="flex items-start">
+                <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">4</span>
+                <span>Once initialized, send test notification</span>
               </li>
-            </ul>
+            </ol>
           </div>
         </div>
       </div>
