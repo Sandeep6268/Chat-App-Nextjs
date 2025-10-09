@@ -1,98 +1,70 @@
-// app/api/send-notification/route.ts - UPDATED FOR NEW API KEY
+// app/api/send-notification/route.ts - FINAL WORKING VERSION
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const { title, message, userId, chatId, url } = await request.json();
 
-    console.log('📨 Received notification request:', { 
-      title, 
-      message, 
-      userId,
-      hasAppId: !!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
-      hasApiKey: !!process.env.ONESIGNAL_REST_API_KEY
-    });
+    console.log('📨 Notification Request:', { title, message, userId });
 
-    // Validate required environment variables
+    // Validate environment variables
     if (!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID) {
-      throw new Error('OneSignal App ID is missing');
+      throw new Error('OneSignal App ID missing');
     }
-
     if (!process.env.ONESIGNAL_REST_API_KEY) {
-      throw new Error('OneSignal REST API Key is missing');
+      throw new Error('OneSignal API Key missing');
     }
 
-    // Prepare notification payload
+    // SIMPLIFIED payload - remove problematic icon fields
     const notificationPayload: any = {
       app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
       headings: { en: title },
       contents: { en: message },
-      // Default URL if not provided
-      url: url || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-      // Additional options for better delivery
-      chrome_web_icon: '/icons/icon-192x192.png',
-      chrome_web_badge: '/icons/icon-192x192.png',
-      firefox_icon: '/icons/icon-192x192.png',
-      // Increase visibility
+      url: url || process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app',
       priority: 10,
-      // Allow multiple notifications
-      thread_id: chatId ? `chat_${chatId}` : undefined,
     };
 
     // Target specific user or all users
     if (userId) {
       notificationPayload.include_external_user_ids = [userId];
-      console.log('🎯 Targeting specific user:', userId);
     } else {
       notificationPayload.included_segments = ['Subscribed Users'];
-      console.log('🎯 Targeting all subscribed users');
     }
 
-    console.log('🚀 Sending to OneSignal API...', {
-      appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
-      apiKey: process.env.ONESIGNAL_REST_API_KEY ? '✅ Present' : '❌ Missing',
-      payload: notificationPayload
-    });
+    console.log('🚀 Sending to OneSignal...');
 
-    // OneSignal REST API call - UPDATED FOR NEW KEY FORMAT
+    // OneSignal API call
     const oneSignalResponse = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.ONESIGNAL_REST_API_KEY}`, // 🔥 CHANGED TO Bearer
-        'accept': 'application/json',
+        'Authorization': `Bearer ${process.env.ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify(notificationPayload),
     });
 
+    const result = await oneSignalResponse.json();
+
     if (!oneSignalResponse.ok) {
-      const errorText = await oneSignalResponse.text();
-      console.error('❌ OneSignal API error response:', {
-        status: oneSignalResponse.status,
-        statusText: oneSignalResponse.statusText,
-        error: errorText
-      });
-      throw new Error(`OneSignal API error: ${oneSignalResponse.status} - ${oneSignalResponse.statusText}`);
+      console.error('❌ OneSignal API Error:', result);
+      throw new Error(result.errors?.join(', ') || 'OneSignal API failed');
     }
 
-    const result = await oneSignalResponse.json();
-    
-    console.log('✅ OneSignal API success:', result);
+    console.log('✅ OneSignal Success:', result);
     
     return NextResponse.json({
       success: true,
-      message: 'Notification sent successfully',
+      message: 'Notification sent',
       data: result,
     });
 
   } catch (error: any) {
-    console.error('❌ Notification API error:', error);
+    console.error('❌ Notification Error:', error);
     
     return NextResponse.json(
       {
         success: false,
         error: error.message || 'Failed to send notification',
-        details: 'Check your OneSignal App ID and REST API Key',
       },
       { status: 500 }
     );

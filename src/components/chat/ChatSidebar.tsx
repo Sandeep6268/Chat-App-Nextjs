@@ -150,31 +150,20 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 }, [user, currentChatId]);
 
 // OneSignal notification function
+// Replace the complex sendOneSignalNotification function with:
 const sendOneSignalNotification = async (senderName: string, message: string, chatId: string) => {
   try {
-    console.log('🔔 Sending OneSignal notification for chat:', chatId);
+    console.log('💬 Chat notification triggered');
     
-    // Get the other user's ID to target them specifically
-    const otherUserInfo = getOtherUserInfo(existingChats.find(chat => chat.id === chatId) || {} as Chat);
+    // Simple notification call
+    await notificationService.sendChatNotification(senderName, message, chatId);
     
-    // Send notification via our API
-    await notificationService.sendChatNotification(
-      senderName,
-      message,
-      chatId,
-      otherUserInfo.uid // Target the specific user
-    );
-    
-    console.log('✅ OneSignal notification sent successfully');
+    console.log('✅ Notification sent');
   } catch (error) {
-    console.error('❌ Error sending OneSignal notification:', error);
-    
-    // Fallback: Log to console if API fails
-    console.log('📤 OneSignal Notification (Fallback):', {
-      title: `New message from ${senderName}`,
+    console.log('💬 New message (notification failed):', {
+      from: senderName,
       message: message,
-      chatId: chatId,
-      url: `${window.location.origin}/chat/${chatId}`
+      chatId: chatId
     });
   }
 };
