@@ -1,4 +1,4 @@
-// components/notifications/DebugNotifications.tsx - UPDATED
+// components/notifications/DebugNotifications.tsx - FINAL
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,48 +8,23 @@ import { useAuth } from '@/components/auth/AuthProvider';
 export default function DebugNotifications() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [subscriptionStatus, setSubscriptionStatus] = useState<string>('checking...');
-  const [notificationPermission, setNotificationPermission] = useState<string>('checking...');
-  const [oneSignalReady, setOneSignalReady] = useState(false);
   const { user } = useAuth();
-
-  useEffect(() => {
-    const checkStatus = () => {
-      if (typeof window !== 'undefined') {
-        // Update permission status
-        setNotificationPermission(Notification.permission);
-        
-        // Check if OneSignal is properly loaded
-        const isReady = window.OneSignalDeferred && 
-                       typeof window.OneSignalDeferred.showSlidedownPrompt === 'function';
-        
-        setOneSignalReady(!!isReady);
-        
-        // Check subscription status
-        if (isReady) {
-          window.OneSignalDeferred.isPushNotificationsEnabled((isSubscribed: boolean) => {
-            setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
-          });
-        } else {
-          setSubscriptionStatus('⏳ Loading...');
-        }
-      }
-    };
-
-    checkStatus();
-    const interval = setInterval(checkStatus, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleEnableNotifications = async () => {
     setLoading(true);
     setMessage('');
     try {
-      if (oneSignalReady) {
-        window.OneSignalDeferred.showSlidedownPrompt();
-        setMessage('✅ Notification prompt shown! Please allow notifications.');
+      // Use browser's native notification API
+      if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        
+        if (permission === 'granted') {
+          setMessage('✅ Notifications enabled! You can now receive alerts.');
+        } else {
+          setMessage('❌ Notifications blocked. Please enable in browser settings.');
+        }
       } else {
-        setMessage('❌ OneSignal not ready yet. Please wait...');
+        setMessage('❌ Browser does not support notifications');
       }
     } catch (error: any) {
       setMessage(`❌ Error: ${error.message}`);
@@ -80,28 +55,13 @@ export default function DebugNotifications() {
     }
   };
 
-  const handleManualSubscribe = async () => {
-    if (oneSignalReady) {
-      try {
-        window.OneSignalDeferred.registerForPushNotifications();
-        setMessage('🔔 Manual subscription requested!');
-      } catch (error) {
-        setMessage('❌ Manual subscription failed');
-      }
-    } else {
-      setMessage('❌ OneSignal not ready');
-    }
-  };
-
   return (
     <div className="p-6 bg-white rounded-lg shadow-md max-w-md mx-auto mt-8 border">
       <h3 className="text-lg font-semibold mb-4">Notification Test</h3>
       
       {message && (
         <div className={`p-3 rounded mb-4 ${
-          message.includes('✅') ? 'bg-green-100 text-green-800' : 
-          message.includes('🔔') ? 'bg-blue-100 text-blue-800' : 
-          'bg-red-100 text-red-800'
+          message.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
         }`}>
           {message}
         </div>
@@ -110,18 +70,10 @@ export default function DebugNotifications() {
       <div className="space-y-3">
         <button
           onClick={handleEnableNotifications}
-          disabled={loading || !oneSignalReady}
+          disabled={loading}
           className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
         >
           {loading ? 'Loading...' : '🔔 Enable Notifications'}
-        </button>
-        
-        <button
-          onClick={handleManualSubscribe}
-          disabled={loading || !oneSignalReady}
-          className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50"
-        >
-          Manual Subscribe
         </button>
 
         <button
@@ -133,20 +85,10 @@ export default function DebugNotifications() {
         </button>
       </div>
 
-      <div className="mt-4 p-3 bg-gray-50 rounded text-sm space-y-2">
+      <div className="mt-4 p-3 bg-gray-50 rounded text-sm">
         <p><strong>Status:</strong> {user ? '✅ Logged in' : '❌ Not logged in'}</p>
-        <p><strong>OneSignal:</strong> {oneSignalReady ? '✅ Ready' : '⏳ Loading...'}</p>
-        <p><strong>Subscription:</strong> {subscriptionStatus}</p>
-        <p><strong>Permission:</strong> {notificationPermission}</p>
+        <p><strong>Permission:</strong> {Notification.permission}</p>
       </div>
-
-      {!oneSignalReady && (
-        <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded">
-          <p className="text-sm text-yellow-800">
-            <strong>⏳ OneSignal Loading:</strong> Please wait for OneSignal to initialize (10-15 seconds)...
-          </p>
-        </div>
-      )}
     </div>
   );
 }

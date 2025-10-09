@@ -47,11 +47,7 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
         <link rel="shortcut icon" href="/favicon.ico" />
         
-        {/* OneSignal SDK - CORRECT SCRIPT */}
-        <script 
-  src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" 
-  async 
-/>
+       
       </head>
       <body className={inter.className}>
         <OneSignalInitializer />
