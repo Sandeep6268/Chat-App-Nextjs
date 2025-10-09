@@ -1,4 +1,4 @@
-// components/chat/ChatSidebar.tsx - UPDATED
+// components/chat/ChatSidebar.tsx - DEBUG VERSION
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -35,33 +35,45 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   // Get current chat ID from URL
   const currentChatId = pathname?.split('/chat/')[1];
 
-  // ✅ UPDATED: Pusher notification function
+  // ✅ DEBUG: Pusher notification function with detailed logging
   const sendPusherNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
     try {
-      console.log('🔔 Sending Pusher notification:', { senderName, message, targetUserId, chatId });
+      console.log('🔔 [DEBUG] Sending Pusher notification:', { 
+        senderName, 
+        message, 
+        targetUserId, 
+        chatId,
+        currentUser: user?.uid 
+      });
       
       // Send notification via Pusher Beams
-      await ChatNotificationService.sendMessageNotification(
+      const result = await ChatNotificationService.sendMessageNotification(
         targetUserId,
         senderName,
         message,
         chatId
       );
       
+      console.log('✅ [DEBUG] Pusher notification result:', result);
+      
     } catch (error) {
-      console.error('❌ Pusher notification failed:', error);
+      console.error('❌ [DEBUG] Pusher notification failed:', error);
     }
   };
 
-  // ✅ UPDATED: useEffect with Pusher notifications
+  // ✅ DEBUG: Updated useEffect with detailed logging
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      console.log('❌ [DEBUG] User not logged in');
+      return;
+    }
 
     let unsubscribeChats: (() => void) | undefined;
 
     const fetchData = async () => {
       try {
         setLoading(true);
+        console.log('🔄 [DEBUG] Fetching users and chats...');
         
         // Fetch users
         const usersRef = collection(firestore, 'users');
@@ -81,6 +93,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         } as User));
         
         setAvailableUsers(allUsers);
+        console.log(`👥 [DEBUG] Found ${allUsers.length} users`);
         
         // Real-time chats listener
         unsubscribeChats = getUserChats(user.uid, (chats) => {
@@ -92,12 +105,13 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
           const previousTotal = previousTotalUnreadRef.current;
           
-          console.log(`📊 Unread messages: ${previousTotal} -> ${totalUnreadMessages}`);
+          console.log(`📊 [DEBUG] Unread messages: ${previousTotal} -> ${totalUnreadMessages}`);
+          console.log(`📋 [DEBUG] Total chats: ${userChats.length}`);
           
           // Send notification when unread count increases
           if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
             const increasedBy = totalUnreadMessages - previousTotal;
-            console.log(`🔔 Unread count increased by ${increasedBy}`);
+            console.log(`🔔 [DEBUG] Unread count increased by ${increasedBy}`);
             
             // Find chats with new unread messages
             userChats.forEach(async (chat) => {
@@ -105,29 +119,41 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
               const previousUnread = previousChat?.unreadCount || 0;
               const currentUnread = chat.unreadCount || 0;
               
+              console.log(`💬 [DEBUG] Chat ${chat.id}: ${previousUnread} -> ${currentUnread}`);
+              
               if (currentUnread > previousUnread) {
                 const otherUserInfo = getOtherUserInfo(chat);
                 
                 // Cooldown check (30 seconds)
                 const now = Date.now();
                 const lastNotification = notificationCooldownRef.current[chat.id] || 0;
+                const timeSinceLastNotification = now - lastNotification;
                 
-                if (now - lastNotification > 30000) {
+                console.log(`⏰ [DEBUG] Cooldown check: ${timeSinceLastNotification}ms since last notification`);
+                
+                if (timeSinceLastNotification > 30000) {
                   notificationCooldownRef.current[chat.id] = now;
                   
                   // Send notification to the OTHER user (not current user)
                   const otherUserId = chat.participants?.find(pid => pid !== user.uid);
                   if (otherUserId) {
+                    console.log(`🚀 [DEBUG] Sending notification to: ${otherUserId}`);
                     await sendPusherNotification(
                       user.displayName || 'Someone',
                       chat.lastMessage || 'New message',
                       otherUserId,
                       chat.id
                     );
+                  } else {
+                    console.log('❌ [DEBUG] No other user found for notification');
                   }
+                } else {
+                  console.log('⏳ [DEBUG] Notification skipped - in cooldown period');
                 }
               }
             });
+          } else {
+            console.log('ℹ️ [DEBUG] No unread count increase detected');
           }
           
           // Update state
@@ -152,7 +178,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         });
         
       } catch (error) {
-        console.error('Error loading chats:', error);
+        console.error('❌ [DEBUG] Error loading chats:', error);
       } finally {
         setLoading(false);
       }
@@ -163,6 +189,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     return () => {
       if (unsubscribeChats) {
         unsubscribeChats();
+        console.log('🧹 [DEBUG] Chat listener cleaned up');
       }
     };
   }, [user, currentChatId]);
@@ -191,7 +218,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
       uid: otherUser.uid
     };
   };
-
   // ... (REST OF THE CHATSIDEBAR CODE REMAINS THE SAME - only notification part updated)
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {
