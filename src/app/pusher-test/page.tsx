@@ -28,7 +28,7 @@ export default function PusherTestPage() {
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
   };
 
-  // Check browser support - CLIENT SIDE ONLY
+  // Check browser support
   useEffect(() => {
     const checkBrowserSupport = () => {
       const supportsNotifications = typeof window !== 'undefined' && 'Notification' in window;
@@ -44,14 +44,35 @@ export default function PusherTestPage() {
       });
 
       addDebugInfo(`🌐 Browser check completed`);
-      addDebugInfo(`📦 Pusher SDK: ${pusherLoaded ? 'Loaded' : 'Not loaded'}`);
-      addDebugInfo(`🔔 Notifications: ${supportsNotifications ? 'Supported' : 'Not supported'}`);
+      addDebugInfo(`🔔 Notification permission: ${permission}`);
+      addDebugInfo(`📦 Pusher SDK: ${pusherLoaded ? 'Loaded ✅' : 'Not loaded ❌'}`);
     };
 
     checkBrowserSupport();
   }, []);
 
-  // Initialize Pusher Beams - SIMPLE VERSION
+  // CORRECTED: Check if user is properly subscribed
+  const checkSubscriptionStatus = async (beamsClient: any) => {
+    try {
+      const state = await beamsClient.getRegistrationState();
+      addDebugInfo(`📊 Registration state: ${state}`);
+      
+      // CORRECTED: Check for all possible "granted" states
+      const isGranted = [
+        'PERMISSION_GRANTED',
+        'PERMISSION_GRANTED_REGISTERED_WITH_BEAMS',
+        'PERMISSION_GRANTED_NOT_REGISTERED_WITH_BEAMS'
+      ].includes(state);
+      
+      setIsSubscribed(isGranted);
+      return isGranted;
+    } catch (error) {
+      addDebugInfo(`❌ Error checking subscription: ${error}`);
+      return false;
+    }
+  };
+
+  // Initialize Pusher Beams - FIXED VERSION
   const initializePusher = async () => {
     if (!user) {
       addDebugInfo('❌ User not logged in');
@@ -84,16 +105,22 @@ export default function PusherTestPage() {
       await beamsClient.start();
       addDebugInfo('✅ Beams client started');
 
-      // Check subscription state
-      const state = await beamsClient.getRegistrationState();
-      addDebugInfo(`📊 Registration state: ${state}`);
+      // CORRECTED: Check subscription status properly
+      const isGranted = await checkSubscriptionStatus(beamsClient);
 
-      if (state === 'PERMISSION_GRANTED') {
-        setIsSubscribed(true);
+      if (isGranted) {
         addDebugInfo('🎉 Pusher Beams ready! You can receive notifications.');
         setStatus('success');
+        
+        // Get device info
+        try {
+          const deviceId = await beamsClient.getDeviceId();
+          addDebugInfo(`📱 Device ID: ${deviceId}`);
+        } catch (error) {
+          addDebugInfo(`ℹ️ Could not get device ID: ${error}`);
+        }
       } else {
-        addDebugInfo('⚠️ Notifications permission not granted');
+        addDebugInfo('❌ Notifications not granted. Please allow notifications.');
         setStatus('error');
       }
 
@@ -103,7 +130,7 @@ export default function PusherTestPage() {
     }
   };
 
-  // Send test notification
+  // Send test notification - FIXED
   const sendTestNotification = async () => {
     if (!user) return;
 
@@ -119,10 +146,11 @@ export default function PusherTestPage() {
         body: JSON.stringify({
           userId: user.uid,
           title: 'Test Notification 🎉',
-          body: 'This is a test notification from your chat app!',
+          body: 'This is a test notification from your chat app! Click to open.',
           data: {
             url: typeof window !== 'undefined' ? window.location.origin : '',
-            type: 'test'
+            type: 'test',
+            timestamp: new Date().toISOString()
           }
         })
       });
@@ -131,6 +159,15 @@ export default function PusherTestPage() {
       
       if (response.ok) {
         addDebugInfo('✅ Notification sent successfully!');
+        addDebugInfo(`📨 Notification ID: ${result.result?.publishId || 'Sent'}`);
+        
+        // Show local success notification
+        if (browserInfo.permission === 'granted') {
+          new Notification('Test Sent ✅', {
+            body: 'Check if push notification arrived',
+            icon: '/icons/icon-192x192.png'
+          });
+        }
       } else {
         addDebugInfo(`❌ Failed: ${result.error}`);
       }
@@ -150,17 +187,17 @@ export default function PusherTestPage() {
           instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
         });
         await beamsClient.clearAllState();
+        addDebugInfo('🧹 Pusher state cleared');
       }
       setDebugInfo([]);
       setIsSubscribed(false);
       setStatus('idle');
-      addDebugInfo('🧹 Everything cleared');
     } catch (error: any) {
       addDebugInfo(`❌ Clear error: ${error.message}`);
     }
   };
 
-  // Check current status
+  // Check current status - FIXED
   const checkStatus = async () => {
     if (!window.PusherPushNotifications) {
       addDebugInfo('❌ Pusher SDK not available');
@@ -172,11 +209,33 @@ export default function PusherTestPage() {
         instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
       });
       
-      const state = await beamsClient.getRegistrationState();
-      addDebugInfo(`📊 Current status: ${state}`);
-      setIsSubscribed(state === 'PERMISSION_GRANTED');
+      await checkSubscriptionStatus(beamsClient);
+      addDebugInfo('🔍 Status check completed');
     } catch (error: any) {
       addDebugInfo(`❌ Status check failed: ${error.message}`);
+    }
+  };
+
+  // Manual permission request
+  const requestPermission = async () => {
+    if (!browserInfo.notificationSupport) {
+      addDebugInfo('❌ Notifications not supported');
+      return;
+    }
+
+    try {
+      addDebugInfo('🔔 Requesting notification permission...');
+      const permission = await Notification.requestPermission();
+      
+      setBrowserInfo(prev => ({ ...prev, permission }));
+      addDebugInfo(`✅ Permission result: ${permission}`);
+      
+      if (permission === 'granted') {
+        // Re-initialize after permission granted
+        setTimeout(() => initializePusher(), 1000);
+      }
+    } catch (error: any) {
+      addDebugInfo(`❌ Permission request failed: ${error.message}`);
     }
   };
 
@@ -206,7 +265,7 @@ export default function PusherTestPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <button
               onClick={initializePusher}
               disabled={status === 'loading' || !user || !browserInfo.pusherLoaded}
@@ -221,6 +280,14 @@ export default function PusherTestPage() {
               className="bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               Send Test
+            </button>
+
+            <button
+              onClick={requestPermission}
+              disabled={browserInfo.permission === 'granted'}
+              className="bg-yellow-500 text-white py-3 px-4 rounded-lg hover:bg-yellow-600 disabled:opacity-50 transition-colors font-medium text-sm"
+            >
+              Request Permission
             </button>
 
             <button
@@ -257,27 +324,31 @@ export default function PusherTestPage() {
           </div>
         </div>
 
-        {/* Simple Instructions */}
+        {/* Troubleshooting Guide */}
         <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">Testing Steps:</h3>
-          <ol className="space-y-3 text-gray-600">
-            <li className="flex items-start">
-              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">1</span>
-              <span>Click <strong>"Initialize Pusher"</strong> to set up push notifications</span>
-            </li>
-            <li className="flex items-start">
-              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">2</span>
-              <span>Allow notifications when browser asks for permission</span>
-            </li>
-            <li className="flex items-start">
-              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">3</span>
-              <span>Click <strong>"Send Test"</strong> to send a test notification</span>
-            </li>
-            <li className="flex items-start">
-              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">4</span>
-              <span>Check if notification appears on your device</span>
-            </li>
-          </ol>
+          <h3 className="text-xl font-bold text-gray-800 mb-4">Troubleshooting Guide</h3>
+          
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-semibold text-gray-700 mb-2">If "Send Test" button is disabled:</h4>
+              <ul className="text-gray-600 space-y-2 text-sm">
+                <li>• Click "Initialize Pusher" first</li>
+                <li>• Allow notifications when browser asks</li>
+                <li>• If permission was denied earlier, click "Request Permission"</li>
+                <li>• Check that subscription status shows "Active"</li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-gray-700 mb-2">Common Issues:</h4>
+              <ul className="text-gray-600 space-y-2 text-sm">
+                <li>• Clear browser cache and cookies</li>
+                <li>• Try in incognito mode</li>
+                <li>• Check browser notification settings</li>
+                <li>• Use "Clear All" to reset everything</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </div>
