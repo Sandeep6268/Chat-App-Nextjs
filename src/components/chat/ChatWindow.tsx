@@ -6,6 +6,7 @@ import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
 
+
 interface ChatWindowProps {
   chatId: string;
   otherUser?: User | null;

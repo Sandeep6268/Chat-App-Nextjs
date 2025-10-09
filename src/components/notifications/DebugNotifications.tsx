@@ -1,4 +1,4 @@
-// components/notifications/DebugNotifications.tsx - FINAL
+// components/notifications/DebugNotifications.tsx - FIXED
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,23 +8,42 @@ import { useAuth } from '@/components/auth/AuthProvider';
 export default function DebugNotifications() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [oneSignalReady, setOneSignalReady] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<string>('checking...');
   const { user } = useAuth();
+
+  useEffect(() => {
+    // Safe check for browser APIs
+    const checkStatus = () => {
+      if (typeof window !== 'undefined') {
+        // Safely check notification permission
+        if ('Notification' in window) {
+          setNotificationPermission(Notification.permission);
+        }
+        
+        // Check OneSignal
+        if (window.OneSignal) {
+          setOneSignalReady(true);
+        }
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleEnableNotifications = async () => {
     setLoading(true);
     setMessage('');
     try {
-      // Use browser's native notification API
-      if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        
-        if (permission === 'granted') {
-          setMessage('✅ Notifications enabled! You can now receive alerts.');
-        } else {
-          setMessage('❌ Notifications blocked. Please enable in browser settings.');
-        }
+      if (oneSignalReady && window.OneSignal.showSlidedownPrompt) {
+        window.OneSignal.showSlidedownPrompt();
+        setMessage('✅ Notification prompt shown!');
       } else {
-        setMessage('❌ Browser does not support notifications');
+        // Fallback to browser API
+        const granted = await notificationService.requestPermission();
+        setMessage(granted ? '✅ Notifications enabled!' : '❌ Notifications blocked');
       }
     } catch (error: any) {
       setMessage(`❌ Error: ${error.message}`);
@@ -47,7 +66,7 @@ export default function DebugNotifications() {
         'This is a test notification from your chat app!',
         user.uid
       );
-      setMessage('✅ Test notification sent! Check your browser notifications.');
+      setMessage('✅ Test notification sent!');
     } catch (error: any) {
       setMessage(`❌ Error: ${error.message}`);
     } finally {
@@ -87,7 +106,8 @@ export default function DebugNotifications() {
 
       <div className="mt-4 p-3 bg-gray-50 rounded text-sm">
         <p><strong>Status:</strong> {user ? '✅ Logged in' : '❌ Not logged in'}</p>
-        <p><strong>Permission:</strong> {Notification.permission}</p>
+        <p><strong>OneSignal:</strong> {oneSignalReady ? '✅ Ready' : '⏳ Loading...'}</p>
+        <p><strong>Permission:</strong> {notificationPermission}</p>
       </div>
     </div>
   );

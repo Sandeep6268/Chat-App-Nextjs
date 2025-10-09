@@ -5,7 +5,6 @@ import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
 import OneSignalInitializer from '@/components/notifications/OneSignalInitializer';
-import DebugNotifications from '@/components/notifications/DebugNotifications';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -75,7 +74,6 @@ export default function RootLayout({
               },
             }}
           />
-          <DebugNotifications />
         </AuthProvider>
       </body>
     </html>

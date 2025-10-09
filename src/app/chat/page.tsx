@@ -10,6 +10,15 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 
+import dynamic from 'next/dynamic';
+
+const DebugNotifications = dynamic(
+  () => import('@/components/notifications/DebugNotifications'),
+  { ssr: false }
+);
+
+
+
 export default function ChatPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -77,6 +86,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-green-50">
+      <DebugNotifications />
       {/* Header */}
       <header className="bg-green-600 text-white p-4">
         <div className="flex justify-between items-center">
