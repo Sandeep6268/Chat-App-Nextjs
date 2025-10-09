@@ -63,14 +63,20 @@ export default function PusherTestPage() {
       addDebugInfo('📋 Registering service worker...');
       const registration = await navigator.serviceWorker.register('/service-worker.js');
       addDebugInfo('✅ Service Worker registered successfully');
+      
+      // Check if service worker is active
+      if (registration.active) {
+        addDebugInfo('🟢 Service Worker is active and ready');
+      }
+      
       return registration;
-    } catch (error) {
-      addDebugInfo(`❌ Service Worker registration failed: ${error}`);
+    } catch (error: any) {
+      addDebugInfo(`❌ Service Worker registration failed: ${error.message}`);
       return null;
     }
   };
 
-  // Initialize Pusher Beams
+  // Initialize Pusher Beams with CORRECT token provider
   const initializePusher = async () => {
     if (!user) {
       addDebugInfo('❌ User not logged in');
@@ -104,34 +110,39 @@ export default function PusherTestPage() {
         instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
       });
 
-      // Get device ID
-      const deviceId = await beamsClient.getDeviceId();
-      addDebugInfo(`📱 Device ID: ${deviceId}`);
+      // CORRECTED: Set up proper token provider
+      beamsClient.setUserId(user.uid, {
+        async fetchToken(userId) {
+          addDebugInfo(`🔐 Fetching token for user: ${userId}`);
+          
+          const response = await fetch('/api/pusher/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userId }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to get token');
+          }
+
+          const tokenData = await response.json();
+          addDebugInfo('✅ Token received successfully');
+          
+          return tokenData.token;
+        },
+        
+        async onTokenInvalidated(userId) {
+          addDebugInfo(`🔄 Token invalidated for user: ${userId}`);
+          // You can re-fetch token here if needed
+        }
+      });
 
       // Start beams client
       await beamsClient.start();
       addDebugInfo('✅ Beams client started');
-
-      // Get token from server
-      const tokenResponse = await fetch('/api/pusher/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId: user.uid }),
-      });
-
-      if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json();
-        throw new Error(errorData.error || 'Failed to get token');
-      }
-
-      const { token } = await tokenResponse.json();
-      addDebugInfo('✅ Token received from server');
-
-      // Set user ID
-      await beamsClient.setUserId(user.uid, token);
-      addDebugInfo(`✅ User ID set: ${user.uid}`);
 
       // Check subscription state
       const state = await beamsClient.getRegistrationState();
@@ -139,7 +150,16 @@ export default function PusherTestPage() {
 
       setIsSubscribed(state === 'PERMISSION_GRANTED');
       setStatus('success');
-      addDebugInfo('🎉 Pusher Beams initialized successfully!');
+      
+      if (state === 'PERMISSION_GRANTED') {
+        addDebugInfo('🎉 Pusher Beams initialized successfully! Ready to receive notifications.');
+        
+        // Get device info
+        const deviceId = await beamsClient.getDeviceId();
+        addDebugInfo(`📱 Device ID: ${deviceId}`);
+      } else {
+        addDebugInfo('⚠️ Pusher initialized but notifications not granted');
+      }
 
     } catch (error: any) {
       console.error('Pusher initialization error:', error);
@@ -178,7 +198,15 @@ export default function PusherTestPage() {
       
       if (response.ok) {
         addDebugInfo('✅ Test notification sent successfully!');
-        addDebugInfo(`📨 Pusher Response: ${JSON.stringify(result.result)}`);
+        addDebugInfo(`📨 Notification ID: ${result.result.publishId}`);
+        
+        // Show local notification for immediate feedback
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Test Sent ✅', {
+            body: 'Notification sent to Pusher. Check your device.',
+            icon: '/icons/icon-192x192.png'
+          });
+        }
       } else {
         addDebugInfo(`❌ Failed to send: ${result.error}`);
       }
@@ -229,6 +257,23 @@ export default function PusherTestPage() {
       }
     } catch (error: any) {
       addDebugInfo(`❌ Error requesting permission: ${error.message}`);
+    }
+  };
+
+  // Stop Pusher Beams
+  const stopPusher = async () => {
+    try {
+      if (window.PusherPushNotifications) {
+        const beamsClient = new window.PusherPushNotifications.Client({
+          instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
+        });
+        
+        await beamsClient.stop();
+        addDebugInfo('🛑 Pusher Beams stopped');
+        setIsSubscribed(false);
+      }
+    } catch (error: any) {
+      addDebugInfo(`❌ Error stopping Pusher: ${error.message}`);
     }
   };
 
@@ -307,21 +352,13 @@ export default function PusherTestPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
             <button
               onClick={initializePusher}
               disabled={status === 'loading' || !user || !browserInfo.pusherLoaded}
               className="bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               {status === 'loading' ? 'Initializing...' : 'Initialize Pusher'}
-            </button>
-
-            <button
-              onClick={requestPermission}
-              disabled={!browserInfo.notificationSupport || browserInfo.permission !== 'default'}
-              className="bg-purple-500 text-white py-3 px-4 rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium text-sm"
-            >
-              Request Permission
             </button>
 
             <button
@@ -332,12 +369,20 @@ export default function PusherTestPage() {
               Send Test Notification
             </button>
 
-            <button
-              onClick={clearPusherState}
-              className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
-            >
-              Clear State
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={clearPusherState}
+                className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
+              >
+                Clear State
+              </button>
+              <button
+                onClick={stopPusher}
+                className="bg-red-500 text-white py-3 px-4 rounded-lg hover:bg-red-600 transition-colors font-medium text-sm"
+              >
+                Stop Beams
+              </button>
+            </div>
           </div>
 
           {/* Debug Information */}
@@ -369,29 +414,6 @@ export default function PusherTestPage() {
           </div>
         </div>
 
-        {/* Quick Fix Section */}
-        {!browserInfo.pusherLoaded && (
-          <div className="max-w-4xl mx-auto mb-6">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <h3 className="font-semibold text-yellow-800 mb-2">Pusher SDK Not Loaded</h3>
-              <p className="text-yellow-700 text-sm mb-3">
-                The Pusher Beams SDK hasn't loaded properly. This might be due to:
-              </p>
-              <ul className="text-yellow-700 text-sm space-y-1 list-disc list-inside">
-                <li>Slow network connection</li>
-                <li>Ad blocker blocking the SDK</li>
-                <li>Script loading issue</li>
-              </ul>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-3 bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors text-sm"
-              >
-                Reload Page
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Instructions */}
         <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-lg p-6">
@@ -403,11 +425,11 @@ export default function PusherTestPage() {
               </li>
               <li className="flex items-start">
                 <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">2</span>
-                <span>Click "Request Permission" to allow notifications</span>
+                <span>Click "Initialize Pusher" to set up push notifications</span>
               </li>
               <li className="flex items-start">
                 <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">3</span>
-                <span>Click "Initialize Pusher" to set up push notifications</span>
+                <span>Allow browser notifications when prompted</span>
               </li>
               <li className="flex items-start">
                 <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">4</span>
@@ -417,23 +439,23 @@ export default function PusherTestPage() {
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Expected Results</h3>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Troubleshooting</h3>
             <ul className="space-y-3 text-gray-600">
               <li className="flex items-center">
-                <span className="text-green-500 mr-2">✅</span>
-                Browser should show notification permission prompt
+                <span className="text-yellow-500 mr-2">⚠️</span>
+                If "Initialize Pusher" fails, try "Clear State" and restart
               </li>
               <li className="flex items-center">
-                <span className="text-green-500 mr-2">✅</span>
-                Pusher Beams should initialize successfully
+                <span className="text-yellow-500 mr-2">⚠️</span>
+                Make sure notifications are allowed in browser settings
               </li>
               <li className="flex items-center">
-                <span className="text-green-500 mr-2">✅</span>
-                Test notification should appear on your device
+                <span className="text-yellow-500 mr-2">⚠️</span>
+                Check that service worker is registered (see debug log)
               </li>
               <li className="flex items-center">
-                <span className="text-green-500 mr-2">✅</span>
-                Debug information should show each step's status
+                <span className="text-yellow-500 mr-2">⚠️</span>
+                Try refreshing the page if issues persist
               </li>
             </ul>
           </div>

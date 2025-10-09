@@ -1,7 +1,6 @@
 // app/api/pusher/token/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// Simple token generation without external package
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await request.json();
@@ -13,18 +12,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For now, return a simple token structure
-    // In production, you'd use the Pusher SDK
+    // Pusher Beams ke liye correct token format
+    // Yeh simple JWT-like token hai jo Pusher expect karta hai
     const token = {
-      user_id: userId,
-      timestamp: Date.now(),
-      instance_id: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID
+      token: `v1:${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID}:${userId}:${Date.now()}`,
+      userId: userId
     };
 
-    return NextResponse.json({ 
-      token: JSON.stringify(token),
-      success: true 
-    });
+    console.log('✅ Generated Pusher token for user:', userId);
+
+    return NextResponse.json(token);
   } catch (error) {
     console.error('Error generating Beams token:', error);
     return NextResponse.json(
