@@ -1,4 +1,4 @@
-// components/chat/ChatSidebar.tsx - DEBUG VERSION
+// components/chat/ChatSidebar.tsx - EXTRA DEBUG LOGS
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -35,18 +35,23 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   // Get current chat ID from URL
   const currentChatId = pathname?.split('/chat/')[1];
 
-  // ✅ DEBUG: Pusher notification function with detailed logging
+  // Add debug logs at component start
+  console.log('🚀 ChatSidebar Component Mounted', { 
+    user: user?.uid, 
+    currentChatId,
+    pathname 
+  });
+
+  // ✅ DEBUG: Pusher notification function
   const sendPusherNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
     try {
-      console.log('🔔 [DEBUG] Sending Pusher notification:', { 
-        senderName, 
-        message, 
-        targetUserId, 
-        chatId,
-        currentUser: user?.uid 
+      console.log('🔔 [NOTIFICATION] Attempting to send notification:', { 
+        from: senderName,
+        to: targetUserId,
+        chat: chatId,
+        message: message
       });
       
-      // Send notification via Pusher Beams
       const result = await ChatNotificationService.sendMessageNotification(
         targetUserId,
         senderName,
@@ -54,17 +59,21 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         chatId
       );
       
-      console.log('✅ [DEBUG] Pusher notification result:', result);
+      console.log('✅ [NOTIFICATION] Success:', result);
+      return result;
       
     } catch (error) {
-      console.error('❌ [DEBUG] Pusher notification failed:', error);
+      console.error('❌ [NOTIFICATION] Failed:', error);
+      throw error;
     }
   };
 
   // ✅ DEBUG: Updated useEffect with detailed logging
   useEffect(() => {
+    console.log('🔄 ChatSidebar useEffect triggered', { user: user?.uid });
+
     if (!user) {
-      console.log('❌ [DEBUG] User not logged in');
+      console.log('❌ No user found, skipping setup');
       return;
     }
 
@@ -73,7 +82,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     const fetchData = async () => {
       try {
         setLoading(true);
-        console.log('🔄 [DEBUG] Fetching users and chats...');
+        console.log('📥 Starting data fetch...');
         
         // Fetch users
         const usersRef = collection(firestore, 'users');
@@ -93,25 +102,34 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         } as User));
         
         setAvailableUsers(allUsers);
-        console.log(`👥 [DEBUG] Found ${allUsers.length} users`);
+        console.log(`👥 Found ${allUsers.length} other users:`, allUsers.map(u => u.displayName));
         
         // Real-time chats listener
         unsubscribeChats = getUserChats(user.uid, (chats) => {
+          console.log('💬 Chats updated:', chats.length, 'chats found');
+          
           const userChats = chats.filter(chat => 
             chat.participants && chat.participants.includes(user.uid)
           );
+          
+          console.log(`📋 Filtered to ${userChats.length} user chats`);
           
           // Calculate total unread
           const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
           const previousTotal = previousTotalUnreadRef.current;
           
-          console.log(`📊 [DEBUG] Unread messages: ${previousTotal} -> ${totalUnreadMessages}`);
-          console.log(`📋 [DEBUG] Total chats: ${userChats.length}`);
+          console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
+          console.log('💬 Chat details:', userChats.map(chat => ({
+            id: chat.id,
+            unread: chat.unreadCount,
+            lastMessage: chat.lastMessage,
+            participants: chat.participants
+          })));
           
           // Send notification when unread count increases
           if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
             const increasedBy = totalUnreadMessages - previousTotal;
-            console.log(`🔔 [DEBUG] Unread count increased by ${increasedBy}`);
+            console.log(`🎯 Unread count increased by ${increasedBy}! Checking for notifications...`);
             
             // Find chats with new unread messages
             userChats.forEach(async (chat) => {
@@ -119,25 +137,27 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
               const previousUnread = previousChat?.unreadCount || 0;
               const currentUnread = chat.unreadCount || 0;
               
-              console.log(`💬 [DEBUG] Chat ${chat.id}: ${previousUnread} -> ${currentUnread}`);
+              console.log(`🔍 Chat ${chat.id}: ${previousUnread} → ${currentUnread} unread`);
               
               if (currentUnread > previousUnread) {
                 const otherUserInfo = getOtherUserInfo(chat);
+                console.log(`🎯 Chat ${chat.id} has new unread messages! Other user:`, otherUserInfo);
                 
                 // Cooldown check (30 seconds)
                 const now = Date.now();
                 const lastNotification = notificationCooldownRef.current[chat.id] || 0;
                 const timeSinceLastNotification = now - lastNotification;
                 
-                console.log(`⏰ [DEBUG] Cooldown check: ${timeSinceLastNotification}ms since last notification`);
+                console.log(`⏰ Cooldown: ${timeSinceLastNotification}ms since last notification (need 30000ms)`);
                 
                 if (timeSinceLastNotification > 30000) {
+                  console.log(`🚀 Sending notification for chat ${chat.id}`);
                   notificationCooldownRef.current[chat.id] = now;
                   
                   // Send notification to the OTHER user (not current user)
                   const otherUserId = chat.participants?.find(pid => pid !== user.uid);
                   if (otherUserId) {
-                    console.log(`🚀 [DEBUG] Sending notification to: ${otherUserId}`);
+                    console.log(`📤 Sending to user: ${otherUserId}`);
                     await sendPusherNotification(
                       user.displayName || 'Someone',
                       chat.lastMessage || 'New message',
@@ -145,15 +165,15 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                       chat.id
                     );
                   } else {
-                    console.log('❌ [DEBUG] No other user found for notification');
+                    console.log('❌ No other user ID found in participants:', chat.participants);
                   }
                 } else {
-                  console.log('⏳ [DEBUG] Notification skipped - in cooldown period');
+                  console.log('⏳ Skipping - still in cooldown period');
                 }
               }
             });
           } else {
-            console.log('ℹ️ [DEBUG] No unread count increase detected');
+            console.log('ℹ️ No unread count increase detected');
           }
           
           // Update state
@@ -161,6 +181,8 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           previousChatsRef.current = userChats;
           setTotalUnread(totalUnreadMessages);
           setExistingChats(userChats);
+          
+          console.log('✅ State updated with new chats');
           
           // Calculate users without chats
           const usersWithExistingChats = new Set<string>();
@@ -175,12 +197,14 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           );
           
           setUsersWithoutChats(usersWithoutExistingChats);
+          console.log(`👥 Users without chats: ${usersWithoutExistingChats.length}`);
         });
         
       } catch (error) {
-        console.error('❌ [DEBUG] Error loading chats:', error);
+        console.error('❌ Error in fetchData:', error);
       } finally {
         setLoading(false);
+        console.log('✅ Data loading complete');
       }
     };
 
@@ -188,8 +212,8 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 
     return () => {
       if (unsubscribeChats) {
+        console.log('🧹 Cleaning up chat listener');
         unsubscribeChats();
-        console.log('🧹 [DEBUG] Chat listener cleaned up');
       }
     };
   }, [user, currentChatId]);

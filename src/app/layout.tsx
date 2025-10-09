@@ -6,6 +6,8 @@ import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
 import PusherProvider from '@/components/pusher/PusherProvider';
 import TestNotificationButton from '@/components/TestNotificationButton';
+import LiveLogs from '@/components/LiveLogs';
+import NotificationTester from '@/components/NotificationTester';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -55,6 +57,8 @@ export default function RootLayout({
         <AuthProvider>
           <PusherProvider />
           {children}
+          <LiveLogs />
+          <NotificationTester />
           <TestNotificationButton />
           <Toaster 
             position="top-right"
