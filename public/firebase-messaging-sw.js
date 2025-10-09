@@ -1,4 +1,3 @@
-// public/firebase-messaging-sw.js - UPDATED
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -16,24 +15,21 @@ const messaging = firebase.messaging();
 
 console.log('✅ [SW] Service Worker Loaded - Single Notification Fix');
 
-// ✅ FIXED: Only use background message handler, disable push event
+// ✅ FIXED: Only handle background messages, prevent duplicates
 messaging.onBackgroundMessage((payload) => {
   console.log('📬 [SW] Background message received:', payload);
   
-  const notificationTitle = payload.notification?.title || 'New Message';
-  const notificationBody = payload.notification?.body || 'You have a new message';
-  
-  // Get target URL from payload data
+  // Extract notification data
+  const notificationTitle = payload.data?.title || payload.notification?.title || 'New Message';
+  const notificationBody = payload.data?.body || payload.notification?.body || 'You have a new message';
   const data = payload.data || {};
-  const baseUrl = self.location.origin;
+  
+  // Build target URL - USE PRODUCTION URL DIRECTLY
+  const baseUrl = 'https://chat-app-nextjs-gray-eta.vercel.app';
   let targetUrl = `${baseUrl}/`;
   
   if (data.chatId) {
     targetUrl = `${baseUrl}/chat/${data.chatId}`;
-  } else if (data.url) {
-    targetUrl = data.url;
-  } else if (data.click_action) {
-    targetUrl = data.click_action;
   }
 
   console.log('📍 [SW] Target URL:', targetUrl);
@@ -61,13 +57,13 @@ messaging.onBackgroundMessage((payload) => {
     ]
   };
 
-  // Close any existing notifications with same tag
-  self.registration.getNotifications({ tag: notificationOptions.tag })
-    .then(notifications => {
-      notifications.forEach(notification => notification.close());
-      
-      // Show new notification
-      return self.registration.showNotification(notificationTitle, notificationOptions);
+  // Show notification
+  self.registration.showNotification(notificationTitle, notificationOptions)
+    .then(() => {
+      console.log('✅ [SW] Notification shown successfully');
+    })
+    .catch(error => {
+      console.error('❌ [SW] Error showing notification:', error);
     });
 });
 
@@ -77,7 +73,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const notificationData = event.notification.data || {};
-  let targetUrl = notificationData.targetUrl || self.location.origin + '/';
+  let targetUrl = notificationData.targetUrl || 'https://chat-app-nextjs-gray-eta.vercel.app/';
 
   console.log('📍 [SW] Navigating to:', targetUrl);
 
@@ -91,7 +87,7 @@ self.addEventListener('notificationclick', (event) => {
       // Check for existing tabs/windows
       for (const client of clientList) {
         // If we find a client that's on our origin, focus it
-        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+        if (client.url.includes('chat-app-nextjs-gray-eta.vercel.app') && 'focus' in client) {
           console.log('🎯 Focusing existing client:', client.url);
           
           // Navigate to target URL if different
@@ -121,8 +117,8 @@ self.addEventListener('notificationclick', (event) => {
   }
 });
 
-// ✅ DISABLED: Push event handler to avoid duplicate notifications
-// self.addEventListener('push', (event) => {
-//   // Comment out or remove this to prevent duplicate notifications
-//   console.log('🚫 Push event disabled to prevent duplicates');
-// });
+// ✅ DISABLED: Push event handler to prevent duplicate notifications
+self.addEventListener('push', (event) => {
+  console.log('🚫 Push event disabled to prevent duplicates');
+  // Do nothing - let onBackgroundMessage handle everything
+});

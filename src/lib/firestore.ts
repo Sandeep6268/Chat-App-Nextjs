@@ -332,8 +332,12 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
       updatedAt: serverTimestamp(),
     });
 
-    // ✅ FIXED: Send push notification with proper data
-    await sendMessageNotification(chatId, message.senderId, message.text, chatData);
+    // ✅ FIXED: Send push notification ONLY if chat is not active
+    const shouldSendNotification = !document.hasFocus(); // Only send if app is in background
+    
+    if (shouldSendNotification) {
+      await sendMessageNotification(chatId, message.senderId, message.text, chatData);
+    }
     
     return messageRef;
   } catch (error) {

@@ -1,14 +1,7 @@
-// app/api/send-notification/route.ts - UPDATED
 import { NextRequest, NextResponse } from 'next/server';
 
 // Simple in-memory cache for access tokens
 let accessTokenCache: { token: string; expiry: number } | null = null;
-
-// ✅ FIXED: Proper base URL configuration
-const getBaseUrl = () => {
-  // Use environment variable if available, otherwise use production URL
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app';
-};
 
 export async function POST(request: NextRequest) {
   console.log('🚀 [API] Push notification request received');
@@ -36,32 +29,18 @@ export async function POST(request: NextRequest) {
       throw new Error('Failed to get access token');
     }
 
-    // ✅ FIXED: Use proper base URL
-    const baseUrl = getBaseUrl();
+    // ✅ FIXED: Use production URL directly
+    const baseUrl = 'https://chat-app-nextjs-gray-eta.vercel.app';
     const chatId = data?.chatId;
     const targetUrl = chatId ? `${baseUrl}/chat/${chatId}` : baseUrl;
 
     console.log('📍 [API] Using base URL:', baseUrl);
     console.log('🎯 [API] Target URL:', targetUrl);
 
-    // ✅ SIMPLIFIED: Use only essential fields to avoid duplicates
+    // ✅ FIXED: Simplified payload to avoid duplicates
     const message = {
       token: token.trim(),
-      notification: {
-        title: title.substring(0, 100),
-        body: messageBody.substring(0, 200),
-      },
-      webpush: {
-        fcm_options: {
-          link: targetUrl,
-        },
-        notification: {
-          icon: '/icon-192.png',
-          badge: '/badge-72x72.png',
-          requireInteraction: true,
-        }
-      },
-      // ✅ IMPORTANT: All data goes here for service worker
+      // Remove notification field to prevent duplicates
       data: {
         title: title.substring(0, 100),
         body: messageBody.substring(0, 200),
@@ -69,7 +48,13 @@ export async function POST(request: NextRequest) {
         targetUrl: targetUrl,
         click_action: targetUrl,
         timestamp: new Date().toISOString(),
+        icon: '/icon-192.png',
         ...data
+      },
+      webpush: {
+        fcm_options: {
+          link: targetUrl,
+        }
       }
     };
 
@@ -127,7 +112,6 @@ export async function POST(request: NextRequest) {
 }
 
 async function getAccessToken(): Promise<string | null> {
-  // ... (keep your existing getAccessToken function)
   if (accessTokenCache && accessTokenCache.expiry > Date.now()) {
     return accessTokenCache.token;
   }

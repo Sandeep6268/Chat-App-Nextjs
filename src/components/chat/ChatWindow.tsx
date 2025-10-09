@@ -30,6 +30,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   // 🔥 IMPROVED: Realtime messages with better push notification logic
   // In ChatWindow.tsx - replace the useEffect
+// Replace the problematic useEffect in ChatWindow.tsx
 useEffect(() => {
   if (!chatId || !user) return;
 
@@ -46,7 +47,7 @@ useEffect(() => {
       console.log(`🆕 [CHAT] ${newMessages.length} new messages`);
 
       newMessages.forEach((message) => {
-        // Send notification for messages from other users
+        // Send notification ONLY for messages from other users AND when chat is not active
         if (message.senderId !== user.uid && otherUser) {
           const isChatActive = isActive && document.hasFocus();
           
@@ -55,6 +56,7 @@ useEffect(() => {
             isFocused: document.hasFocus()
           });
 
+          // ✅ FIXED: Only send notification if chat is NOT active
           if (!isChatActive) {
             console.log('🚀 [CHAT] Sending push notification...');
             
@@ -72,12 +74,6 @@ useEffect(() => {
             ).then(success => {
               console.log(success ? '✅ [CHAT] Push sent' : '❌ [CHAT] Push failed');
             });
-
-            // Also show browser notification
-            showBrowserNotification(
-              `💬 ${participantName}`,
-              message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text
-            );
           }
         }
       });
@@ -107,7 +103,7 @@ useEffect(() => {
     setHasMarkedInitialRead(false);
     previousMessagesRef.current = [];
   };
-}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName, sendPushNotification, showBrowserNotification]);
+}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName, sendPushNotification]);
   // ✉️ Improved Send message function
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
