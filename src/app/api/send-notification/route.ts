@@ -1,4 +1,4 @@
-// app/api/send-notification/route.ts - UPDATED
+// app/api/send-notification/route.ts - UPDATED FOR NEW API KEY
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -8,8 +8,7 @@ export async function POST(request: NextRequest) {
     console.log('📨 Received notification request:', { 
       title, 
       message, 
-      userId, 
-      chatId,
+      userId,
       hasAppId: !!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
       hasApiKey: !!process.env.ONESIGNAL_REST_API_KEY
     });
@@ -49,14 +48,19 @@ export async function POST(request: NextRequest) {
       console.log('🎯 Targeting all subscribed users');
     }
 
-    console.log('🚀 Sending to OneSignal API...', notificationPayload);
+    console.log('🚀 Sending to OneSignal API...', {
+      appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
+      apiKey: process.env.ONESIGNAL_REST_API_KEY ? '✅ Present' : '❌ Missing',
+      payload: notificationPayload
+    });
 
-    // OneSignal REST API call
-    const oneSignalResponse = await fetch('https://onesignal.com/api/v1/notifications', {
+    // OneSignal REST API call - UPDATED FOR NEW KEY FORMAT
+    const oneSignalResponse = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
+        'Authorization': `Bearer ${process.env.ONESIGNAL_REST_API_KEY}`, // 🔥 CHANGED TO Bearer
+        'accept': 'application/json',
       },
       body: JSON.stringify(notificationPayload),
     });
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: error.message || 'Failed to send notification',
-        details: 'Check your OneSignal App ID and REST API Key in environment variables',
+        details: 'Check your OneSignal App ID and REST API Key',
       },
       { status: 500 }
     );
