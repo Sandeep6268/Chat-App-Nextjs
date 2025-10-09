@@ -152,28 +152,30 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 // OneSignal notification function
 const sendOneSignalNotification = async (senderName: string, message: string, chatId: string) => {
   try {
-    // This would typically be done from your backend
-    // For now, we'll log it and you can implement the API call later
-    console.log('📤 OneSignal Notification:', {
+    console.log('🔔 Sending OneSignal notification for chat:', chatId);
+    
+    // Get the other user's ID to target them specifically
+    const otherUserInfo = getOtherUserInfo(existingChats.find(chat => chat.id === chatId) || {} as Chat);
+    
+    // Send notification via our API
+    await notificationService.sendChatNotification(
+      senderName,
+      message,
+      chatId,
+      otherUserInfo.uid // Target the specific user
+    );
+    
+    console.log('✅ OneSignal notification sent successfully');
+  } catch (error) {
+    console.error('❌ Error sending OneSignal notification:', error);
+    
+    // Fallback: Log to console if API fails
+    console.log('📤 OneSignal Notification (Fallback):', {
       title: `New message from ${senderName}`,
       message: message,
       chatId: chatId,
       url: `${window.location.origin}/chat/${chatId}`
     });
-
-    // You can implement API call to your backend here
-    // await fetch('/api/send-notification', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({
-    //     title: `New message from ${senderName}`,
-    //     message: message,
-    //     chatId: chatId
-    //   })
-    // });
-
-  } catch (error) {
-    console.error('Error sending OneSignal notification:', error);
   }
 };
 

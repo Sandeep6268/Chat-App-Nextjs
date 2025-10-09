@@ -1,10 +1,9 @@
-// components/notifications/OneSignalInitializer.tsx
+// components/notifications/OneSignalInitializer.tsx - UPDATED
 'use client';
 
 import { useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 
-// Declare OneSignal types
 declare global {
   interface Window {
     OneSignal: any;
@@ -15,10 +14,10 @@ export default function OneSignalInitializer() {
   const { user } = useAuth();
 
   useEffect(() => {
-    // Initialize OneSignal
-    const initializeOneSignal = () => {
+    const initializeOneSignal = async () => {
+      // Wait for OneSignal SDK to load
       if (typeof window === 'undefined' || !window.OneSignal) {
-        console.log('⏳ OneSignal SDK not loaded yet');
+        console.log('⏳ Waiting for OneSignal SDK to load...');
         return;
       }
 
@@ -29,38 +28,69 @@ export default function OneSignalInitializer() {
           return;
         }
 
-        // Initialize OneSignal
-        window.OneSignal.init({
+        console.log('🚀 Initializing OneSignal...');
+
+        // Initialize OneSignal with proper config
+        await window.OneSignal.init({
           appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!,
           allowLocalhostAsSecureOrigin: true,
-          serviceWorkerParam: { scope: '/onesignal/' },
+          serviceWorkerParam: { 
+            scope: '/onesignal/' 
+          },
           serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+          notifyButton: {
+            enable: true,
+          },
+          promptOptions: {
+            slidedown: {
+              enabled: true,
+              autoPrompt: true,
+              timeDelay: 3,
+              pageViews: 1,
+            }
+          }
         });
 
         console.log('✅ OneSignal initialized successfully');
 
-        // Set up event listeners
-        window.OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
-          console.log('📢 User subscription changed:', isSubscribed);
+        // Set up event listeners for debugging
+        window.OneSignal.on('initialized', () => {
+          console.log('🎯 OneSignal fully initialized');
         });
 
-        // Show prompt after initialization
-        setTimeout(() => {
-          window.OneSignal.showSlidedownPrompt();
-        }, 3000);
+        window.OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
+          console.log('📢 Subscription changed:', isSubscribed);
+        });
+
+        window.OneSignal.on('notificationPermissionChange', (permission: string) => {
+          console.log('🔔 Notification permission:', permission);
+        });
+
+        // Get initial state
+        const permission = await window.OneSignal.getNotificationPermission();
+        const userId = await window.OneSignal.getUserId();
+        
+        console.log('📊 OneSignal State:', {
+          permission,
+          userId,
+          initialized: window.OneSignal.Initialized
+        });
 
       } catch (error) {
         console.error('❌ OneSignal initialization failed:', error);
       }
     };
 
-    // Wait for OneSignal SDK to load
-    if (window.OneSignal) {
-      initializeOneSignal();
+    // Load OneSignal SDK if not already loaded
+    if (!window.OneSignal) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+      script.async = true;
+      document.head.appendChild(script);
+      
+      script.onload = initializeOneSignal;
     } else {
-      // If SDK not loaded, wait for it
-      window.addEventListener('load', initializeOneSignal);
-      return () => window.removeEventListener('load', initializeOneSignal);
+      initializeOneSignal();
     }
   }, []);
 
@@ -68,16 +98,19 @@ export default function OneSignalInitializer() {
   useEffect(() => {
     const updateOneSignalUser = async () => {
       if (!window.OneSignal || !window.OneSignal.Initialized) {
+        console.log('⏳ OneSignal not ready for user update');
         return;
       }
 
       try {
         if (user) {
-          // Set external user ID for targeted notifications
           await window.OneSignal.setExternalUserId(user.uid);
           console.log('✅ OneSignal external user ID set:', user.uid);
+          
+          // Also set user properties for segmentation
+          await window.OneSignal.setSMSNumber(user.phoneNumber || '');
+          await window.OneSignal.setEmail(user.email || '');
         } else {
-          // Remove external user ID when user logs out
           await window.OneSignal.removeExternalUserId();
           console.log('✅ OneSignal external user ID removed');
         }

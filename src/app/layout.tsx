@@ -5,6 +5,7 @@ import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
 import OneSignalInitializer from '@/components/notifications/OneSignalInitializer';
+import DebugNotifications from '@/components/notifications/DebugNotifications';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -40,8 +41,6 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
         <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167x167.png" />
 
-        {/* PWA Manifest */}
-        <link rel="manifest" href="/manifest.json" />
 
         {/* Favicon */}
         <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
@@ -80,6 +79,7 @@ export default function RootLayout({
               },
             }}
           />
+          <DebugNotifications />
         </AuthProvider>
       </body>
     </html>
