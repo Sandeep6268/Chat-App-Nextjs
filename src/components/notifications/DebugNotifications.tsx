@@ -1,4 +1,4 @@
-// components/notifications/DebugNotifications.tsx - UPDATED
+// components/notifications/DebugNotifications.tsx - FIXED
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -9,23 +9,30 @@ export default function DebugNotifications() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('checking...');
+  const [notificationPermission, setNotificationPermission] = useState<string>('checking...');
   const { user } = useAuth();
 
   useEffect(() => {
-    // Check subscription status periodically
-    const checkSubscription = async () => {
-      if (typeof window !== 'undefined' && window.OneSignal) {
-        try {
-          const isSubscribed = await window.OneSignal.isPushNotificationsEnabled();
-          setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
-        } catch (error) {
-          setSubscriptionStatus('❓ Unknown');
+    // Safe check for browser APIs
+    const checkStatus = async () => {
+      if (typeof window !== 'undefined') {
+        // Update permission status
+        setNotificationPermission(Notification.permission);
+        
+        // Check OneSignal subscription
+        if (window.OneSignal) {
+          try {
+            const isSubscribed = await window.OneSignal.isPushNotificationsEnabled();
+            setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
+          } catch (error) {
+            setSubscriptionStatus('❓ Unknown');
+          }
         }
       }
     };
 
-    checkSubscription();
-    const interval = setInterval(checkSubscription, 3000);
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -34,7 +41,6 @@ export default function DebugNotifications() {
     setMessage('');
     try {
       if (typeof window !== 'undefined' && window.OneSignal) {
-        // Use OneSignal's prompt directly
         await window.OneSignal.showSlidedownPrompt();
         setMessage('✅ Notification prompt shown! Please allow notifications.');
       } else {
@@ -124,7 +130,7 @@ export default function DebugNotifications() {
         <p><strong>Status:</strong> {user ? '✅ Logged in' : '❌ Not logged in'}</p>
         <p><strong>OneSignal:</strong> {typeof window !== 'undefined' && window.OneSignal ? '✅ Loaded' : '❌ Loading...'}</p>
         <p><strong>Subscription:</strong> {subscriptionStatus}</p>
-        <p><strong>Permission:</strong> {Notification.permission}</p>
+        <p><strong>Permission:</strong> {notificationPermission}</p>
       </div>
 
       {subscriptionStatus.includes('❌') && (

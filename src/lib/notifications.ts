@@ -1,18 +1,19 @@
-// lib/notifications.ts - FINAL WORKING VERSION
+// lib/notifications.ts - ADD MISSING METHOD
 export class NotificationService {
   
-  // Request notification permission
+  // Safe permission check
   async requestPermission(): Promise<boolean> {
     try {
-      if (typeof window === 'undefined' || !window.OneSignal) {
-        console.log('OneSignal not loaded');
-        return false;
-      }
-
-      // Use browser's native API for permission
-      if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        return permission === 'granted';
+      if (typeof window === 'undefined') return false;
+      
+      if ('Notification' in window && window.OneSignal) {
+        // Use OneSignal for permission
+        await window.OneSignal.showSlidedownPrompt();
+        
+        // Check result after a delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const isSubscribed = await window.OneSignal.isPushNotificationsEnabled();
+        return isSubscribed;
       }
       
       return false;
@@ -22,7 +23,7 @@ export class NotificationService {
     }
   }
 
-  // Send notification
+  // 🔥 ADD THIS MISSING METHOD
   async sendNotification(title: string, message: string, userId?: string) {
     try {
       const response = await fetch('/api/send-notification', {
@@ -48,6 +49,11 @@ export class NotificationService {
       console.error('Send notification error:', error);
       throw error;
     }
+  }
+
+  // 🔥 KEEP THIS METHOD FOR BACKWARD COMPATIBILITY
+  async sendTestNotification(title: string, message: string, userId?: string) {
+    return this.sendNotification(title, message, userId);
   }
 
   // Send chat notification

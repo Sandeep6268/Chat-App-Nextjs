@@ -1,7 +1,7 @@
-// components/notifications/OneSignalInitializer.tsx - UPDATED
+// components/notifications/OneSignalInitializer.tsx - FINAL
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 declare global {
@@ -12,27 +12,17 @@ declare global {
 
 export default function OneSignalInitializer() {
   const { user } = useAuth();
-  const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
-    const initializeOneSignal = async () => {
+    const initializeOneSignal = () => {
       if (typeof window === 'undefined') return;
 
-      try {
-        console.log('🚀 Initializing OneSignal...');
+      console.log('🚀 Starting OneSignal initialization...');
 
-        // Wait for OneSignal SDK to load
-        if (!window.OneSignal) {
-          await new Promise((resolve) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-            script.async = true;
-            script.onload = resolve;
-            document.head.appendChild(script);
-          });
-        }
-
-        // Initialize OneSignal
+      // Initialize OneSignal
+      window.OneSignal = window.OneSignal || [];
+      
+      window.OneSignal.push(function() {
         window.OneSignal.init({
           appId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!,
           allowLocalhostAsSecureOrigin: true,
@@ -45,57 +35,53 @@ export default function OneSignalInitializer() {
             }
           },
           welcomeNotification: {
-            disable: false, // Enable welcome notification
+            disable: false,
+          },
+          notifyButton: {
+            enable: false,
           },
         });
 
-        // Check subscription status
-        window.OneSignal.on('subscriptionChange', async (isSubscribed: boolean) => {
-          console.log('📱 Subscription changed:', isSubscribed);
-          setIsSubscribed(isSubscribed);
-          
-          if (isSubscribed) {
-            const userId = await window.OneSignal.getUserId();
-            console.log('✅ User subscribed with ID:', userId);
-          }
+        console.log('✅ OneSignal initialized');
+
+        // Set up event listeners
+        window.OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
+          console.log('📱 Subscription status:', isSubscribed);
         });
 
-        // Get initial subscription status
-        const subscribed = await window.OneSignal.isPushNotificationsEnabled();
-        console.log('📱 Initial subscription status:', subscribed);
-        setIsSubscribed(subscribed);
-
-        if (!subscribed) {
-          console.log('🔔 User not subscribed, showing prompt...');
-          // Automatically show prompt if not subscribed
-          setTimeout(() => {
-            window.OneSignal.showSlidedownPrompt();
-          }, 2000);
-        }
-
-      } catch (error) {
-        console.error('❌ OneSignal initialization failed:', error);
-      }
+        window.OneSignal.on('notificationPermissionChange', (permission: string) => {
+          console.log('🔔 Permission changed:', permission);
+        });
+      });
     };
 
-    initializeOneSignal();
+    // Load OneSignal SDK
+    if (!window.OneSignal) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+      script.async = true;
+      script.onload = initializeOneSignal;
+      document.head.appendChild(script);
+    } else {
+      initializeOneSignal();
+    }
   }, []);
 
-  // Update external user ID when user logs in
+  // Set external user ID when user logs in
   useEffect(() => {
-    const updateUser = async () => {
-      if (window.OneSignal && user && isSubscribed) {
+    const setUser = async () => {
+      if (user && window.OneSignal) {
         try {
           await window.OneSignal.setExternalUserId(user.uid);
-          console.log('✅ External user ID set:', user.uid);
+          console.log('✅ User ID set:', user.uid);
         } catch (error) {
-          console.error('Error setting external user ID:', error);
+          console.error('Error setting user ID:', error);
         }
       }
     };
 
-    updateUser();
-  }, [user, isSubscribed]);
+    setUser();
+  }, [user]);
 
   return null;
 }
