@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
+import OneSignalProvider from '@/components/onesignal/OneSignalProvider';
 import { Toaster } from 'react-hot-toast';
-import OneSignalProvider from '@/components/OneSignalProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-       {/* OneSignal SDK Script */}
+        {/* OneSignal SDK Script */}
         <script
           src="https://cdn.onesignal.com/sdks/OneSignalSDK.js"
           async
