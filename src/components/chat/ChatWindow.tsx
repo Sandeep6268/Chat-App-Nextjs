@@ -9,6 +9,7 @@ import ScrollToBottom from 'react-scroll-to-bottom';
 import { ChatNotificationService } from '@/lib/chat-notification-service';
 import toast from 'react-hot-toast';
 import { BrowserNotificationService } from '@/lib/browser-notifications';
+import FCMDebug from '@/lib/fcm-debug';
 
 interface ChatWindowProps {
   chatId: string;
@@ -24,7 +25,12 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
   const processedMessagesRef = useRef<Set<string>>(new Set());
-
+useEffect(() => {
+    // Enable FCM debugging
+    FCMDebug.enableDebug();
+    
+    console.log('🔔 FCM Debugging Enabled - All FCM messages will be logged here');
+  }, []);
  
   const previousMessagesRef = useRef<Message[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);

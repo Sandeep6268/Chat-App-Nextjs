@@ -5,7 +5,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import FCMDebug from '@/lib/fcm-debug';
 
 
 export default function Home() {
@@ -17,12 +16,7 @@ export default function Home() {
       router.push('/chat');
     }
   }, [user, loading, router]);
-  useEffect(() => {
-    // Enable FCM debugging
-    FCMDebug.enableDebug();
-    
-    console.log('🔔 FCM Debugging Enabled - All FCM messages will be logged here');
-  }, []);
+  
 
   if (loading) {
     return (
