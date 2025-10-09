@@ -1,4 +1,4 @@
-// components/pusher/PusherProvider.tsx - IMPROVED
+// components/pusher/PusherProvider.tsx - WORKING VERSION
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -12,79 +12,105 @@ declare global {
 
 export default function PusherProvider() {
   const { user } = useAuth();
-  const [initialized, setInitialized] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   useEffect(() => {
-    if (!user || initialized) return;
+    if (!user) return;
 
     const initializePusher = async () => {
       try {
-        console.log('🚀 [PUSHER DEBUG] Initializing Pusher Beams...');
+        setStatus('loading');
+        console.log('🚀 Starting Pusher Beams setup...');
 
-        // Check if Pusher SDK is loaded
+        // Step 1: Wait for Pusher SDK
         if (!window.PusherPushNotifications) {
-          console.log('❌ [PUSHER DEBUG] Pusher SDK not loaded yet, retrying...');
-          // Retry after 2 seconds
-          setTimeout(initializePusher, 2000);
-          return;
-        }
-
-        console.log('✅ [PUSHER DEBUG] Pusher SDK loaded');
-
-        // Register service worker
-        if ('serviceWorker' in navigator) {
-          try {
-            const registration = await navigator.serviceWorker.register('/service-worker.js');
-            console.log('✅ [PUSHER DEBUG] Service Worker registered');
-            
-            // Wait for service worker to be ready
-            if (registration.installing) {
-              registration.installing.addEventListener('statechange', (e) => {
-                if ((e.target as any)?.state === 'activated') {
-                  startPusherClient();
-                }
-              });
-            } else {
-              startPusherClient();
-            }
-          } catch (error) {
-            console.error('❌ [PUSHER DEBUG] Service Worker registration failed:', error);
-            startPusherClient(); // Try starting anyway
+          console.log('⏳ Pusher SDK not loaded, waiting...');
+          // Load SDK manually
+          await new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'https://js.pusher.com/beams/1.0/push-notifications-cdn.js';
+            script.onload = resolve;
+            script.onerror = resolve;
+            document.head.appendChild(script);
+          });
+          
+          if (!window.PusherPushNotifications) {
+            throw new Error('Pusher SDK failed to load');
           }
-        } else {
-          startPusherClient();
         }
 
-      } catch (error) {
-        console.error('❌ [PUSHER DEBUG] Pusher initialization error:', error);
-      }
-    };
+        console.log('✅ Pusher SDK loaded');
 
-    const startPusherClient = async () => {
-      try {
+        // Step 2: Register Service Worker
+        if (!('serviceWorker' in navigator)) {
+          throw new Error('Service Workers not supported');
+        }
+
+        console.log('📋 Registering service worker...');
+        const registration = await navigator.serviceWorker.register('/service-worker.js', {
+          scope: '/',
+          updateViaCache: 'none'
+        });
+        console.log('✅ Service Worker registered');
+
+        // Step 3: Wait for service worker to be ready
+        if (registration.installing) {
+          await new Promise((resolve) => {
+            registration.installing.addEventListener('statechange', (e) => {
+              if ((e.target as any)?.state === 'activated') {
+                resolve(null);
+              }
+            });
+          });
+        }
+
+        // Step 4: Start Pusher Client
+        console.log('🔄 Starting Pusher client...');
         const beamsClient = new window.PusherPushNotifications.Client({
           instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
         });
 
         await beamsClient.start();
-        setInitialized(true);
-        console.log('✅ [PUSHER DEBUG] Pusher Beams initialized for user:', user.uid);
+        console.log('✅ Pusher client started');
 
-        // Check subscription status
+        // Step 5: Check and request permission
         const state = await beamsClient.getRegistrationState();
-        console.log(`📊 [PUSHER DEBUG] Registration state: ${state}`);
+        console.log('📊 Registration state:', state);
+
+        if (state === 'PERMISSION_GRANTED_REGISTERED_WITH_BEAMS') {
+          console.log('🎉 Pusher Beams ready!');
+          setStatus('success');
+        } else {
+          console.log('🔔 Requesting notification permission...');
+          const permission = await Notification.requestPermission();
+          console.log('📱 Permission result:', permission);
+          
+          if (permission === 'granted') {
+            setStatus('success');
+            console.log('🎉 Notifications enabled!');
+          } else {
+            setStatus('error');
+            console.log('❌ Notifications not granted');
+          }
+        }
 
       } catch (error) {
-        console.error('❌ [PUSHER DEBUG] Pusher client start failed:', error);
+        console.error('❌ Pusher setup failed:', error);
+        setStatus('error');
       }
     };
 
     initializePusher();
+  }, [user]);
 
-    return () => {
-      // Cleanup if needed
-    };
-  }, [user, initialized]);
+  // Show status in console
+  useEffect(() => {
+    if (status === 'success') {
+      console.log('✅ Pusher Beams: READY for notifications');
+    } else if (status === 'error') {
+      console.log('❌ Pusher Beams: Setup failed');
+    }
+  }, [status]);
 
   return null;
 }

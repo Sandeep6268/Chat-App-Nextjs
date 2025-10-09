@@ -1,15 +1,32 @@
-// app/api/pusher/notify/route.ts - SIMPLE VERSION
+// app/api/pusher/notify/route.ts - WORKING VERSION
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const { userId, title, body, data } = await request.json();
 
+    console.log('📤 Sending notification to user:', userId);
+
     if (!userId || !title || !body) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Simple version - without icon
+    // SIMPLE PUSHER PAYLOAD - No complex features
+    const publishBody = {
+      users: [userId],
+      web: {
+        notification: {
+          title: title,
+          body: body,
+          // icon: "/icons/icon-192x192.png", // Remove for now
+          // deep_link: data?.url // Remove for now
+        },
+        data: data || {}
+      }
+    };
+
+    console.log('🚀 Pusher publish body:', JSON.stringify(publishBody));
+
     const response = await fetch(
       `https://${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID}.pushnotifications.pusher.com/publish_api/v1/instances/${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID}/publishes/users`,
       {
@@ -18,32 +35,31 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.PUSHER_BEAMS_SECRET_KEY}`
         },
-        body: JSON.stringify({
-          users: [userId],
-          web: {
-            notification: {
-              title: title,
-              body: body,
-              deep_link: data?.url || process.env.NEXT_PUBLIC_APP_URL,
-              // icon removed to avoid URL format issues
-            },
-            data: data
-          }
-        })
+        body: JSON.stringify(publishBody)
       }
     );
 
+    const responseText = await response.text();
+    console.log('📨 Pusher response:', response.status, responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Pusher API error: ${response.status} - ${errorText}`);
+      throw new Error(`Pusher API error: ${response.status} - ${responseText}`);
     }
 
-    const result = await response.json();
-    console.log('✅ Notification sent successfully:', result);
-    return NextResponse.json({ success: true, result });
+    const result = JSON.parse(responseText);
+    console.log('✅ Pusher notification sent:', result);
+
+    return NextResponse.json({ 
+      success: true, 
+      result,
+      message: 'Notification sent to Pusher'
+    });
 
   } catch (error: any) {
-    console.error('Error sending notification:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ Notification error:', error);
+    return NextResponse.json({ 
+      success: false,
+      error: error.message 
+    }, { status: 500 });
   }
 }

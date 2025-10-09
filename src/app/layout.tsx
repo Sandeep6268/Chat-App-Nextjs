@@ -5,9 +5,9 @@ import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
 import PusherProvider from '@/components/pusher/PusherProvider';
-import TestNotificationButton from '@/components/TestNotificationButton';
-import LiveLogs from '@/components/LiveLogs';
 import NotificationTester from '@/components/NotificationTester';
+import PusherDebugger from '@/components/PusherDebugger';
+import PusherSDKLoader from '@/components/PusherSDKLoader';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -55,11 +55,7 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          <PusherProvider />
           {children}
-          <LiveLogs />
-          <NotificationTester />
-          <TestNotificationButton />
           <Toaster 
             position="top-right"
             toastOptions={{

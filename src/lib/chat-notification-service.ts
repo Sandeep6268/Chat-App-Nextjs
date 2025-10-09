@@ -1,6 +1,6 @@
-// lib/chat-notification-service.ts
+// lib/chat-notification-service.ts - IMPROVED VERSION
 export class ChatNotificationService {
-  // Send notification when new message arrives
+  // Send notification when new message arrives - IMPROVED
   static async sendMessageNotification(
     targetUserId: string,
     senderName: string,
@@ -8,6 +8,8 @@ export class ChatNotificationService {
     chatId: string
   ) {
     try {
+      console.log(`📤 [NOTIFICATION] Sending to: ${targetUserId}, From: ${senderName}`);
+      
       const response = await fetch('/api/pusher/notify', {
         method: 'POST',
         headers: {
@@ -15,28 +17,31 @@ export class ChatNotificationService {
         },
         body: JSON.stringify({
           userId: targetUserId,
-          title: `New message from ${senderName}`,
-          body: message.length > 50 ? message.substring(0, 50) + '...' : message,
+          title: `💬 New message from ${senderName}`,
+          body: message.length > 100 ? message.substring(0, 100) + '...' : message,
           data: {
             chatId: chatId,
             senderName: senderName,
             type: 'chat_message',
-            url: `${process.env.NEXT_PUBLIC_APP_URL}/chat/${chatId}`
+            url: `${window.location.origin}/chat/${chatId}`,
+            timestamp: new Date().toISOString()
           }
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send notification');
+        const errorText = await response.text();
+        console.error('❌ [NOTIFICATION] API error:', errorText);
+        throw new Error(`Notification failed: ${response.status}`);
       }
 
       const result = await response.json();
-      console.log('💬 Chat notification sent:', result);
+      console.log('✅ [NOTIFICATION] Successfully sent:', result);
       return result;
     } catch (error) {
-      console.error('Error sending chat notification:', error);
-      return null;
+      console.error('❌ [NOTIFICATION] Error:', error);
+      // Don't throw error to prevent breaking the chat
+      return { success: false, error: error.message };
     }
   }
 }

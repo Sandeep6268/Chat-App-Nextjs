@@ -1,4 +1,4 @@
-// components/chat/ChatWindow.tsx - DEBUG VERSION
+// components/chat/ChatWindow.tsx - FIXED VERSION
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -7,6 +7,8 @@ import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
 import { ChatNotificationService } from '@/lib/chat-notification-service';
+import toast from 'react-hot-toast';
+import { BrowserNotificationService } from '@/lib/browser-notifications';
 
 interface ChatWindowProps {
   chatId: string;
@@ -21,71 +23,52 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
+  const processedMessagesRef = useRef<Set<string>>(new Set());
+
  
   const previousMessagesRef = useRef<Message[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const toastShownRef = useRef<Set<string>>(new Set()); // ✅ Track shown toasts
 
-  const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
+  // ✅ FIXED: Use useMemo for participantName to prevent unnecessary changes
+  const participantName = useRef(otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User').current;
 
-  // ✅ DEBUG: Updated useEffect with detailed logging
+ // ✅ SIMPLE: useEffect with Browser Notifications
   useEffect(() => {
-    if (!chatId || !user) {
-      console.log('❌ [CHAT DEBUG] Missing chatId or user');
-      return;
-    }
-
-    console.log(`🔍 [CHAT DEBUG] Setting up chat listener for: ${chatId}`);
+    if (!chatId || !user) return;
 
     const unsubscribe = getMessages(chatId, (msgs) => {
       const previousCount = previousMessagesRef.current.length;
       const currentCount = msgs.length;
 
-      console.log(`💬 [CHAT DEBUG] Messages: ${previousCount} -> ${currentCount}`);
-      console.log(`👀 [CHAT DEBUG] Chat active: ${isActive}, Focused: ${document.hasFocus()}`);
-
       // Check for new messages
       if (previousCount > 0 && currentCount > previousCount) {
         const newMessages = msgs.slice(previousCount);
         
-        console.log(`🆕 [CHAT DEBUG] ${newMessages.length} new messages detected`);
-
-        newMessages.forEach(async (message, index) => {
-          console.log(`📨 [CHAT DEBUG] Message ${index + 1}:`, {
-            sender: message.senderId,
-            text: message.text,
-            isOwn: message.senderId === user.uid
-          });
-
-          // Send notification ONLY for messages from other users AND when chat is not active
+        newMessages.forEach(async (message) => {
+          // Send notification for messages from other users
           if (message.senderId !== user.uid && otherUser) {
-            const isChatActive = isActive && document.hasFocus();
+            const messageId = message.id;
             
-            console.log(`🔔 [CHAT DEBUG] New message from ${otherUser.uid}:`, {
-              isChatActive,
-              isFocused: document.hasFocus(),
-              shouldSendNotification: !isChatActive
-            });
-
-            // Send notification if chat is NOT active
-            if (!isChatActive) {
-              console.log('🚀 [CHAT DEBUG] Sending push notification...');
+            // Prevent processing same message multiple times
+            if (!processedMessagesRef.current.has(messageId)) {
+              processedMessagesRef.current.add(messageId);
               
-              try {
-                const result = await ChatNotificationService.sendMessageNotification(
-                  otherUser.uid,
-                  user.displayName || 'Someone',
-                  message.text,
-                  chatId
-                );
-                console.log('✅ [CHAT DEBUG] Push notification sent:', result);
-              } catch (error) {
-                console.error('❌ [CHAT DEBUG] Push notification failed:', error);
+              const isChatActive = isActive && document.hasFocus();
+              
+              // 🎯 SHOW BROWSER NOTIFICATION only if chat is NOT active
+              if (!isChatActive) {
+                try {
+                  await BrowserNotificationService.showMessageNotification(
+                    user.displayName || 'Someone',
+                    message.text,
+                    chatId
+                  );
+                } catch (error) {
+                  console.log('Notification failed (user might have blocked)');
+                }
               }
-            } else {
-              console.log('ℹ️ [CHAT DEBUG] Notification skipped - chat is active');
             }
-          } else {
-            console.log('ℹ️ [CHAT DEBUG] Notification skipped - own message or no other user');
           }
         });
       }
@@ -99,17 +82,10 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
           (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
         );
         
-        console.log(`📖 [CHAT DEBUG] Marking ${unreadMessages.length} messages as read`);
-        
         if (unreadMessages.length > 0) {
           markAllMessagesAsRead(chatId, user.uid)
-            .then(() => {
-              setHasMarkedInitialRead(true);
-              console.log('✅ [CHAT DEBUG] Messages marked as read');
-            })
-            .catch(error => {
-              console.error('❌ [CHAT DEBUG] Error marking messages as read:', error);
-            });
+            .then(() => setHasMarkedInitialRead(true))
+            .catch(() => {});
         } else {
           setHasMarkedInitialRead(true);
         }
@@ -117,16 +93,13 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
     });
 
     return () => {
-      console.log('🧹 [CHAT DEBUG] Cleaning up chat listener');
       unsubscribe();
       setHasMarkedInitialRead(false);
       previousMessagesRef.current = [];
     };
-  }, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName]);
+  }, [chatId, user, otherUser?.uid, hasMarkedInitialRead, isActive]);
 
-  // ... (REST OF THE CODE SAME AS BEFORE)
-
-  // ✉️ Improved Send message function
+  // Send message function
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !chatId) return;
@@ -144,13 +117,15 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Error sending message. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ... (REST OF THE CHATWINDOW CODE REMAINS THE SAME)
+  // Test notifications
+  const testNotifications = async () => {
+    await BrowserNotificationService.showTestNotification();
+  };
   // 🕒 Improved time formatting
   const formatMessageTime = (timestamp: { toDate: () => Date } | null) => {
     if (!timestamp) return '';
@@ -174,7 +149,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
     if (m.senderId !== user?.uid) return null;
     
     const readByCount = m.readBy?.length || 0;
-    const participantsCount = 2; // For one-to-one chat
+    const participantsCount = 2;
     
     if (readByCount >= participantsCount) {
       return <span className="text-blue-500 ml-2" title="Read">✓✓</span>;
@@ -184,13 +159,6 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
       return <span className="text-gray-400 ml-2" title="Sent">✓</span>;
     }
   };
-
-  // 🎯 Scroll to bottom helper
-  const scrollToBottom = useCallback(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, []);
 
   // 📱 Handle Enter key for sending
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -218,11 +186,10 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   return (
     <div className="flex-1 flex flex-col bg-white h-full">
-      {/* Header - Fixed with better styling */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-green-200 flex-shrink-0">
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-3">
-            {/* User Avatar */}
             <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
               {participantName[0]?.toUpperCase()}
             </div>
@@ -237,7 +204,6 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
             </div>
           </div>
           
-          {/* Online Status */}
           <div className="flex items-center space-x-2 bg-white px-3 py-1 rounded-full border border-green-200">
             <div className={`w-2 h-2 rounded-full ${otherUser?.isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
             <span className={`text-xs font-medium ${otherUser?.isOnline ? 'text-green-600' : 'text-gray-500'}`}>
@@ -246,15 +212,19 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
           </div>
         </div>
       </div>
-
-      {/* Messages Container - Scrollable Area */}
+ {/* Test Notification Button */}
+          <button
+            onClick={testNotifications}
+            className="bg-blue-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-600"
+          >
+            Test Notifications
+          </button>
+      {/* Messages Container */}
       <div className="flex-1 overflow-hidden bg-gradient-to-b from-gray-50 to-white" ref={chatContainerRef}>
         <ScrollToBottom 
           className="h-full w-full"
           followButtonClassName="scroll-to-bottom-follow-button"
           initialScrollBehavior="smooth"
-          checkInterval={100}
-          debounce={100}
         >
           <div className="p-4 md:p-6 min-h-full">
             {messages.length === 0 ? (
@@ -277,7 +247,6 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
                   
                   return (
                     <div key={m.id}>
-                      {/* Date Separator */}
                       {showDate && (
                         <div className="flex justify-center my-4">
                           <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
@@ -324,7 +293,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
         </ScrollToBottom>
       </div>
 
-      {/* Input - Fixed with better styling */}
+      {/* Input */}
       <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0">
         <form onSubmit={handleSendMessage} className="flex space-x-3">
           <div className="flex-1 relative">
@@ -363,49 +332,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
             )}
           </button>
         </form>
-        
-        {/* Character count for longer messages */}
-        {newMessage.length > 500 && (
-          <div className="mt-2 text-center">
-            <span className={`text-xs ${newMessage.length > 800 ? 'text-red-500' : 'text-yellow-600'}`}>
-              {newMessage.length} characters {newMessage.length > 800 ? '- Getting too long!' : ''}
-            </span>
-          </div>
-        )}
       </div>
-
-      {/* Custom CSS for scroll button */}
-      <style jsx global>{`
-        .scroll-to-bottom-follow-button {
-          background: linear-gradient(135deg, #10B981, #059669) !important;
-          color: white !important;
-          border-radius: 50% !important;
-          width: 44px !important;
-          height: 44px !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          border: 2px solid white !important;
-          cursor: pointer !important;
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
-          position: absolute !important;
-          bottom: 90px !important;
-          right: 20px !important;
-          z-index: 1000 !important;
-          opacity: 0.9 !important;
-          transition: all 0.3s ease-in-out !important;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 14l-7 7m0 0l-7-7m7 7V3'%3E%3C/path%3E%3C/svg%3E") !important;
-          background-repeat: no-repeat !important;
-          background-position: center !important;
-          background-size: 20px 20px !important;
-        }
-        
-        .scroll-to-bottom-follow-button:hover {
-          opacity: 1 !important;
-          transform: scale(1.1) !important;
-          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4) !important;
-        }
-      `}</style>
     </div>
   );
 }

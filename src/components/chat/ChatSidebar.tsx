@@ -16,6 +16,7 @@ interface ChatSidebarProps {
 
 export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const { user } = useAuth();
+  
   const pathname = usePathname();
   const router = useRouter();
   
@@ -43,30 +44,83 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   });
 
   // ✅ DEBUG: Pusher notification function
-  const sendPusherNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
-    try {
-      console.log('🔔 [NOTIFICATION] Attempting to send notification:', { 
-        from: senderName,
-        to: targetUserId,
-        chat: chatId,
-        message: message
-      });
-      
-      const result = await ChatNotificationService.sendMessageNotification(
-        targetUserId,
-        senderName,
-        message,
-        chatId
-      );
-      
-      console.log('✅ [NOTIFICATION] Success:', result);
-      return result;
-      
-    } catch (error) {
-      console.error('❌ [NOTIFICATION] Failed:', error);
-      throw error;
+  const sendBrowserNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
+  try {
+    console.log('🔔 [NOTIFICATION] Attempting to send browser notification:', { 
+      from: senderName,
+      to: targetUserId, 
+      chat: chatId,
+      message: message
+    });
+
+    // Check if browser supports notifications
+    if (!('Notification' in window)) {
+      console.log('❌ [NOTIFICATION] Browser does not support notifications');
+      return { success: false, error: 'Browser not supported' };
     }
-  };
+
+    // Check current permission
+    if (Notification.permission === 'denied') {
+      console.log('❌ [NOTIFICATION] Notifications are blocked by user');
+      return { success: false, error: 'Notifications blocked' };
+    }
+
+    // Request permission if needed
+    if (Notification.permission === 'default') {
+      console.log('🔔 [NOTIFICATION] Requesting notification permission...');
+      const permission = await Notification.requestPermission();
+      
+      if (permission !== 'granted') {
+        console.log('❌ [NOTIFICATION] User denied notification permission');
+        return { success: false, error: 'Permission denied' };
+      }
+    }
+
+    // Create and show notification
+    const notification = new Notification(`💬 New message from ${senderName}`, {
+      body: message.length > 100 ? message.substring(0, 100) + '...' : message,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-72x72.png',
+      tag: chatId, // Group notifications by chat
+      requireInteraction: true,
+      silent: false,
+      data: {
+        chatId,
+        senderName,
+        targetUserId
+      }
+    });
+
+    console.log('✅ [NOTIFICATION] Browser notification shown successfully');
+
+    // Handle notification click
+    notification.onclick = () => {
+      console.log('🎯 [NOTIFICATION] Notification clicked, opening chat...');
+      window.focus();
+      // Navigate to the specific chat
+      window.location.href = `/chat/${chatId}`;
+      notification.close();
+    };
+
+    // Auto close after 7 seconds
+    setTimeout(() => {
+      notification.close();
+    }, 7000);
+
+    return { 
+      success: true, 
+      message: 'Browser notification sent successfully',
+      notificationId: chatId
+    };
+
+  } catch (error: any) {
+    console.error('❌ [NOTIFICATION] Browser notification failed:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Unknown error occurred'
+    };
+  }
+};
 
   // ✅ DEBUG: Updated useEffect with detailed logging
   useEffect(() => {
@@ -105,82 +159,70 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         console.log(`👥 Found ${allUsers.length} other users:`, allUsers.map(u => u.displayName));
         
         // Real-time chats listener
-        unsubscribeChats = getUserChats(user.uid, (chats) => {
-          console.log('💬 Chats updated:', chats.length, 'chats found');
+         // Real-time chats listener
+      unsubscribeChats = getUserChats(user.uid, (chats) => {
+        console.log('💬 Chats updated:', chats.length, 'chats found');
+        
+        const userChats = chats.filter(chat => 
+          chat.participants && chat.participants.includes(user.uid)
+        );
+        
+        console.log(`📋 Filtered to ${userChats.length} user chats`);
+        
+        // Calculate total unread
+        const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+        const previousTotal = previousTotalUnreadRef.current;
+        
+        console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
+        
+        // 🚨 FIXED: Send notification for EACH new unread message
+        if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
+          const increasedBy = totalUnreadMessages - previousTotal;
+          console.log(`🎯 Unread count increased by ${increasedBy}! Checking for notifications...`);
           
-          const userChats = chats.filter(chat => 
-            chat.participants && chat.participants.includes(user.uid)
-          );
-          
-          console.log(`📋 Filtered to ${userChats.length} user chats`);
-          
-          // Calculate total unread
-          const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-          const previousTotal = previousTotalUnreadRef.current;
-          
-          console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
-          console.log('💬 Chat details:', userChats.map(chat => ({
-            id: chat.id,
-            unread: chat.unreadCount,
-            lastMessage: chat.lastMessage,
-            participants: chat.participants
-          })));
-          
-          // Send notification when unread count increases
-          if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
-            const increasedBy = totalUnreadMessages - previousTotal;
-            console.log(`🎯 Unread count increased by ${increasedBy}! Checking for notifications...`);
+          // Find ALL chats with new unread messages
+          userChats.forEach(async (chat) => {
+            const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
+            const previousUnread = previousChat?.unreadCount || 0;
+            const currentUnread = chat.unreadCount || 0;
             
-            // Find chats with new unread messages
-            userChats.forEach(async (chat) => {
-              const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
-              const previousUnread = previousChat?.unreadCount || 0;
-              const currentUnread = chat.unreadCount || 0;
+            console.log(`🔍 Chat ${chat.id}: ${previousUnread} → ${currentUnread} unread`);
+            
+            // 🚨 FIXED: Send notification for EVERY new unread message
+            if (currentUnread > previousUnread) {
+              const otherUserInfo = getOtherUserInfo(chat);
+              console.log(`🎯 Chat ${chat.id} has ${currentUnread - previousUnread} new unread messages!`);
               
-              console.log(`🔍 Chat ${chat.id}: ${previousUnread} → ${currentUnread} unread`);
+              // 🚨 REMOVED COOLDOWN: Send notification immediately for each new message
+              // Get the other user ID (the one who should receive notification)
+              const otherUserId = chat.participants?.find(pid => pid !== user.uid);
               
-              if (currentUnread > previousUnread) {
-                const otherUserInfo = getOtherUserInfo(chat);
-                console.log(`🎯 Chat ${chat.id} has new unread messages! Other user:`, otherUserInfo);
+              if (otherUserId && otherUserInfo) {
+                console.log(`🚀 Sending notification for chat ${chat.id} to user ${otherUserId}`);
                 
-                // Cooldown check (30 seconds)
-                const now = Date.now();
-                const lastNotification = notificationCooldownRef.current[chat.id] || 0;
-                const timeSinceLastNotification = now - lastNotification;
-                
-                console.log(`⏰ Cooldown: ${timeSinceLastNotification}ms since last notification (need 30000ms)`);
-                
-                if (timeSinceLastNotification > 30000) {
-                  console.log(`🚀 Sending notification for chat ${chat.id}`);
-                  notificationCooldownRef.current[chat.id] = now;
-                  
-                  // Send notification to the OTHER user (not current user)
-                  const otherUserId = chat.participants?.find(pid => pid !== user.uid);
-                  if (otherUserId) {
-                    console.log(`📤 Sending to user: ${otherUserId}`);
-                    await sendPusherNotification(
-                      user.displayName || 'Someone',
-                      chat.lastMessage || 'New message',
-                      otherUserId,
-                      chat.id
-                    );
-                  } else {
-                    console.log('❌ No other user ID found in participants:', chat.participants);
-                  }
-                } else {
-                  console.log('⏳ Skipping - still in cooldown period');
+                try {
+                  await sendBrowserNotification(
+                    user.displayName || 'Someone',
+                    chat.lastMessage || 'New message',
+                    otherUserId,
+                    chat.id
+                  );
+                  console.log(`✅ Notification sent successfully for chat ${chat.id}`);
+                } catch (error) {
+                  console.error(`❌ Failed to send notification for chat ${chat.id}:`, error);
                 }
               }
-            });
-          } else {
-            console.log('ℹ️ No unread count increase detected');
-          }
-          
-          // Update state
-          previousTotalUnreadRef.current = totalUnreadMessages;
-          previousChatsRef.current = userChats;
-          setTotalUnread(totalUnreadMessages);
-          setExistingChats(userChats);
+            }
+          });
+        } else {
+          console.log('ℹ️ No unread count increase detected');
+        }
+        
+        // Update state
+        previousTotalUnreadRef.current = totalUnreadMessages;
+        previousChatsRef.current = userChats;
+        setTotalUnread(totalUnreadMessages);
+        setExistingChats(userChats);
           
           console.log('✅ State updated with new chats');
           
@@ -201,22 +243,20 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         });
         
       } catch (error) {
-        console.error('❌ Error in fetchData:', error);
-      } finally {
-        setLoading(false);
-        console.log('✅ Data loading complete');
-      }
-    };
+      console.error('❌ Error in fetchData:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchData();
+  fetchData();
 
-    return () => {
-      if (unsubscribeChats) {
-        console.log('🧹 Cleaning up chat listener');
-        unsubscribeChats();
-      }
-    };
-  }, [user, currentChatId]);
+  return () => {
+    if (unsubscribeChats) {
+      unsubscribeChats();
+    }
+  };
+}, [user, currentChatId]);
 
   // Get other user's info from chat
   const getOtherUserInfo = (chat: Chat) => {
