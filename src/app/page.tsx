@@ -19,7 +19,7 @@ export default function Home() {
   }, [user, loading, router]);
   useEffect(() => {
     // Enable FCM debugging
-    FCMDebub.enableDebug();
+    FCMDebug.enableDebug();
     
     console.log('🔔 FCM Debugging Enabled - All FCM messages will be logged here');
   }, []);
