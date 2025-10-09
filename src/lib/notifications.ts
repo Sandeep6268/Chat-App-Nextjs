@@ -1,11 +1,11 @@
-import { firestore } from '@/lib/firebase/client';
+import { firestore } from '@/lib/firebase';
 import { collection, doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
 
 export class NotificationService {
   // Store FCM token for user
   static async saveUserFCMToken(userId: string, token: string): Promise<void> {
     try {
-      console.log('💾 Saving FCM token for user:', userId, 'Token:', token.substring(0, 20) + '...');
+      console.log('💾 Saving FCM token for user:', userId);
       
       const userRef = doc(firestore, 'users', userId);
       await updateDoc(userRef, {
@@ -89,10 +89,11 @@ export class NotificationService {
       }
 
       console.log('✅ Notification sent successfully:', result);
+      return result;
 
     } catch (error) {
       console.error('❌ Error sending push notification:', error);
-      // Don't throw here to avoid breaking the chat flow
+      throw error;
     }
   }
 
@@ -130,10 +131,11 @@ export class NotificationService {
       }
 
       console.log('✅ Unread count notification sent successfully:', result);
+      return result;
 
     } catch (error) {
       console.error('❌ Error sending unread count notification:', error);
-      // Don't throw here to avoid breaking the chat flow
+      throw error;
     }
   }
 }

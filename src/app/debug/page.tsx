@@ -1,35 +1,257 @@
-// --- path: /src/app/debug/page.tsx ---
 'use client';
 
 import { useEffect, useState } from 'react';
+import { auth, firestore } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { NotificationService } from '@/lib/notifications';
+import { requestNotificationPermission } from '@/lib/firebase/client';
 
 export default function DebugPage() {
-  const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [user, setUser] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [chats, setChats] = useState<any[]>([]);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [testMessage, setTestMessage] = useState('Hello from testing!');
+
+  const addLog = (message: string) => {
+    setLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+    console.log(message);
+  };
 
   useEffect(() => {
-    // Check which environment variables are available
-    const vars = {
-      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'NOT_FOUND',
-      authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'NOT_FOUND',
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'NOT_FOUND',
-      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'NOT_FOUND',
-      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || 'NOT_FOUND',
-      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || 'NOT_FOUND',
+    // Redirect to home if not in development
+    if (process.env.NODE_ENV === 'production' && !window.location.href.includes('localhost')) {
+      window.location.href = '/';
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      if (user) {
+        addLog(`✅ User logged in: ${user.email} (${user.uid})`);
+      } else {
+        addLog('❌ No user logged in');
+      }
+    });
+
+    // Load users and chats
+    const loadData = async () => {
+      try {
+        addLog('📖 Loading Firestore data...');
+        
+        const usersSnapshot = await getDocs(collection(firestore, 'users'));
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setUsers(usersData);
+        addLog(`✅ Loaded ${usersData.length} users`);
+
+        const chatsSnapshot = await getDocs(collection(firestore, 'chats'));
+        const chatsData = chatsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setChats(chatsData);
+        addLog(`✅ Loaded ${chatsData.length} chats`);
+      } catch (error) {
+        addLog(`❌ Error loading data: ${error}`);
+      }
     };
-    setEnvVars(vars);
-    //console.log('Environment Variables:', vars);
+
+    loadData();
+
+    return () => unsubscribe();
   }, []);
 
+  const requestNotifications = async () => {
+    try {
+      addLog('🔔 Requesting notification permission...');
+      const token = await requestNotificationPermission();
+      if (token) {
+        setFcmToken(token);
+        addLog(`✅ FCM Token received: ${token.substring(0, 50)}...`);
+        
+        // Save token to user profile
+        if (user) {
+          await NotificationService.saveUserFCMToken(user.uid, token);
+          addLog('✅ FCM token saved to user profile');
+        }
+      } else {
+        addLog('❌ Failed to get FCM token - permission denied');
+      }
+    } catch (error) {
+      addLog(`❌ Error requesting notifications: ${error}`);
+    }
+  };
+
+  const sendTestNotification = async () => {
+    if (!user) {
+      addLog('❌ Please login first to send test notification');
+      return;
+    }
+
+    try {
+      addLog('🚀 Sending test notification...');
+      
+      await NotificationService.sendNewMessageNotification({
+        recipientId: user.uid, // Send to yourself
+        senderName: 'Test Bot',
+        messageText: testMessage,
+        chatId: 'test-chat-id',
+        senderId: 'test-bot'
+      });
+
+      addLog('✅ Test notification sent! Check your notifications');
+    } catch (error) {
+      addLog(`❌ Error sending test notification: ${error}`);
+    }
+  };
+
+  const sendUnreadNotification = async () => {
+    if (!user) {
+      addLog('❌ Please login first to send unread notification');
+      return;
+    }
+
+    try {
+      addLog('📊 Sending unread count notification...');
+      
+      await NotificationService.sendUnreadCountNotification({
+        recipientId: user.uid,
+        senderName: 'System',
+        chatId: 'test-chat-id'
+      });
+
+      addLog('✅ Unread count notification sent!');
+    } catch (error) {
+      addLog(`❌ Error sending unread notification: ${error}`);
+    }
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+    addLog('🗑️ Logs cleared');
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <h1 className="text-2xl font-bold mb-6">Firebase Debug Info</h1>
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Environment Variables:</h2>
-        <pre className="bg-gray-800 text-green-400 p-4 rounded overflow-auto">
-          {JSON.stringify(envVars, null, 2)}
+    <div className="p-6 max-w-6xl mx-auto">
+      <h1 className="text-3xl font-bold mb-6 text-green-600">🔥 Firebase Debug Dashboard</h1>
+      
+      {/* Project Info */}
+      <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+        <h2 className="text-xl font-semibold mb-2">Current Firebase Project</h2>
+        <pre className="bg-white p-4 rounded border">
+          {JSON.stringify({
+            projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+            authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+            appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID?.substring(0, 20) + '...'
+          }, null, 2)}
         </pre>
-        <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 rounded">
-          <p className="font-semibold">Check the browser console for more detailed logs.</p>
+      </div>
+
+      {/* Notification Test Section */}
+      <div className="mb-6 p-4 bg-green-50 rounded-lg">
+        <h2 className="text-xl font-semibold mb-4">🔔 Notification Testing</h2>
+        
+        <div className="space-y-4">
+          <div className="flex gap-4 flex-wrap">
+            <button 
+              onClick={requestNotifications}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Request Notification Permission
+            </button>
+
+            <button 
+              onClick={sendTestNotification}
+              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            >
+              Send Test Message Notification
+            </button>
+
+            <button 
+              onClick={sendUnreadNotification}
+              className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600"
+            >
+              Send Unread Count Notification
+            </button>
+
+            <button 
+              onClick={clearLogs}
+              className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+            >
+              Clear Logs
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Test Message:
+            </label>
+            <input
+              type="text"
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="Enter test message..."
+            />
+          </div>
+
+          {fcmToken && (
+            <div className="p-3 bg-yellow-50 rounded">
+              <strong>FCM Token:</strong>
+              <div className="text-xs break-all mt-1">{fcmToken}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* User Info */}
+      <div className="mb-6 p-4 bg-purple-50 rounded-lg">
+        <h2 className="text-xl font-semibold mb-2">👤 Current User</h2>
+        <pre className="bg-white p-4 rounded border max-h-40 overflow-auto">
+          {user ? JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            emailVerified: user.emailVerified
+          }, null, 2) : 'No user logged in'}
+        </pre>
+      </div>
+
+      {/* Data Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="p-4 bg-red-50 rounded-lg">
+          <h2 className="text-xl font-semibold mb-2">👥 All Users ({users.length})</h2>
+          <pre className="bg-white p-4 rounded border max-h-60 overflow-auto text-xs">
+            {JSON.stringify(users, null, 2)}
+          </pre>
+        </div>
+
+        <div className="p-4 bg-indigo-50 rounded-lg">
+          <h2 className="text-xl font-semibold mb-2">💬 All Chats ({chats.length})</h2>
+          <pre className="bg-white p-4 rounded border max-h-60 overflow-auto text-xs">
+            {JSON.stringify(chats, null, 2)}
+          </pre>
+        </div>
+      </div>
+
+      {/* Logs Section */}
+      <div className="p-4 bg-gray-50 rounded-lg">
+        <h2 className="text-xl font-semibold mb-2">📝 Console Logs</h2>
+        <div className="bg-black text-green-400 p-4 rounded max-h-80 overflow-auto font-mono text-sm">
+          {logs.length === 0 ? (
+            <div className="text-gray-500">No logs yet. Perform some actions to see logs here.</div>
+          ) : (
+            logs.map((log, index) => (
+              <div key={index} className="mb-1">
+                {log}
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
