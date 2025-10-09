@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminFirestore } from '@/lib/firebase/admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,6 +7,10 @@ export async function POST(request: NextRequest) {
     if (!userId || !token) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    // Dynamically import Firebase Admin to avoid build issues
+    const { adminFirestore } = await import('@/lib/firebase/admin');
+    const admin = await import('firebase-admin');
 
     if (action === 'save') {
       await adminFirestore.collection('users').doc(userId).update({

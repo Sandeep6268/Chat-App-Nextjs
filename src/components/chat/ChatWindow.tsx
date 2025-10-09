@@ -1,4 +1,3 @@
-// components/chat/ChatWindow.tsx
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -6,7 +5,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
-
+import { NotificationService } from '@/lib/notifications'; // ✅ Add this import
 
 interface ChatWindowProps {
   chatId: string;
@@ -27,75 +26,75 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
+  // ✅ FIXED: useEffect with proper notification logic
+  useEffect(() => {
+    if (!chatId || !user) return;
 
-// Replace the problematic useEffect with this:
-useEffect(() => {
-  if (!chatId || !user) return;
+    const unsubscribe = getMessages(chatId, (msgs) => {
+      const previousCount = previousMessagesRef.current.length;
+      const currentCount = msgs.length;
 
-  const unsubscribe = getMessages(chatId, (msgs) => {
-    const previousCount = previousMessagesRef.current.length;
-    const currentCount = msgs.length;
+      console.log(`💬 [CHAT] Messages: ${previousCount} -> ${currentCount}`);
 
-    console.log(`💬 [CHAT] Messages: ${previousCount} -> ${currentCount}`);
+      // Check for new messages
+      if (previousCount > 0 && currentCount > previousCount) {
+        const newMessages = msgs.slice(previousCount);
+        
+        console.log(`🆕 [CHAT] ${newMessages.length} new messages`);
 
-    // Check for new messages
-    if (previousCount > 0 && currentCount > previousCount) {
-      const newMessages = msgs.slice(previousCount);
-      
-      console.log(`🆕 [CHAT] ${newMessages.length} new messages`);
-
-      newMessages.forEach(async (message) => {
-        // Send notification ONLY for messages from other users AND when chat is not active
-        if (message.senderId !== user.uid && otherUser) {
-          const isChatActive = isActive && document.hasFocus();
-          
-          console.log(`🔔 [CHAT] New message from ${otherUser.uid}:`, {
-            isChatActive,
-            isFocused: document.hasFocus()
-          });
-
-          // ✅ FIXED: Only send notification if chat is NOT active
-          if (!isChatActive) {
-            console.log('🚀 [CHAT] Sending push notification...');
+        newMessages.forEach(async (message) => {
+          // Send notification ONLY for messages from other users AND when chat is not active
+          if (message.senderId !== user.uid && otherUser) {
+            const isChatActive = isActive && document.hasFocus();
             
-            // Send push notification for new message
-            await NotificationService.sendNewMessageNotification({
-              recipientId: user.uid,
-              senderName: participantName,
-              messageText: message.text,
-              chatId: chatId,
-              senderId: message.senderId,
+            console.log(`🔔 [CHAT] New message from ${otherUser.uid}:`, {
+              isChatActive,
+              isFocused: document.hasFocus()
             });
+
+            // ✅ FIXED: Only send notification if chat is NOT active
+            if (!isChatActive) {
+              console.log('🚀 [CHAT] Sending push notification...');
+              
+              // Send push notification for new message
+              await NotificationService.sendNewMessageNotification({
+                recipientId: user.uid,
+                senderName: participantName,
+                messageText: message.text,
+                chatId: chatId,
+                senderId: message.senderId,
+              });
+            }
           }
-        }
-      });
-    }
-
-    setMessages(msgs);
-    previousMessagesRef.current = msgs;
-
-    // Mark messages as read
-    if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
-      const unreadMessages = msgs.filter(
-        (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
-      );
-      
-      if (unreadMessages.length > 0) {
-        markAllMessagesAsRead(chatId, user.uid)
-          .then(() => setHasMarkedInitialRead(true))
-          .catch(console.error);
-      } else {
-        setHasMarkedInitialRead(true);
+        });
       }
-    }
-  });
 
-  return () => {
-    unsubscribe();
-    setHasMarkedInitialRead(false);
-    previousMessagesRef.current = [];
-  };
-}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName]);
+      setMessages(msgs);
+      previousMessagesRef.current = msgs;
+
+      // Mark messages as read
+      if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
+        const unreadMessages = msgs.filter(
+          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+        );
+        
+        if (unreadMessages.length > 0) {
+          markAllMessagesAsRead(chatId, user.uid)
+            .then(() => setHasMarkedInitialRead(true))
+            .catch(console.error);
+        } else {
+          setHasMarkedInitialRead(true);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      setHasMarkedInitialRead(false);
+      previousMessagesRef.current = [];
+    };
+  }, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName]);
+
   // ✉️ Improved Send message function
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,9 +110,6 @@ useEffect(() => {
         read: false,
         type: 'text',
       });
-      setNewMessage('');
-      
-      // Clear input after successful send
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);

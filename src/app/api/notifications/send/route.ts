@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminMessaging, adminFirestore } from '@/lib/firebase/admin';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify this is a server-side call (optional: add authentication)
     const { recipientId, senderName, messageText, chatId, senderId, type } = await request.json();
 
     if (!recipientId || !chatId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    // Dynamically import Firebase Admin to avoid build issues
+    const { adminFirestore, adminMessaging } = await import('@/lib/firebase/admin');
 
     // Get user's FCM tokens from Firestore
     const userDoc = await adminFirestore.collection('users').doc(recipientId).get();

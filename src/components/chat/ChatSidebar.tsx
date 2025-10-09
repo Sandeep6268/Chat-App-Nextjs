@@ -9,7 +9,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
-import { NotificationService } from '@/lib/notifications';
+import { NotificationService } from '@/lib/notifications'; // ✅ Add this import
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
