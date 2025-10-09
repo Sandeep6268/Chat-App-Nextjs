@@ -30,12 +30,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    console.log('🔐 Generating proper Pusher token for user:', userId);
+    console.log('🔐 Generating token for user:', userId);
 
-    // Generate proper token
-    const token = generatePusherToken(userId);
+    // Simple token - we're not using user tokens for now
+    const token = `simple_token_${userId}_${Date.now()}`;
     
-    console.log('✅ Proper JWT token generated successfully');
+    console.log('✅ Token generated');
 
     return NextResponse.json({ 
       token: token,

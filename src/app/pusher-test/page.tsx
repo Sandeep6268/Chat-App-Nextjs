@@ -16,11 +16,40 @@ export default function PusherTestPage() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [browserInfo, setBrowserInfo] = useState({
+    notificationSupport: false,
+    serviceWorkerSupport: false,
+    permission: 'default' as NotificationPermission | 'not-supported',
+    pusherLoaded: false
+  });
 
   const addDebugInfo = (info: string) => {
     console.log(info);
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
   };
+
+  // Check browser support - CLIENT SIDE ONLY
+  useEffect(() => {
+    const checkBrowserSupport = () => {
+      const supportsNotifications = typeof window !== 'undefined' && 'Notification' in window;
+      const supportsServiceWorker = typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
+      const permission = supportsNotifications ? Notification.permission : 'not-supported';
+      const pusherLoaded = typeof window !== 'undefined' && typeof window.PusherPushNotifications !== 'undefined';
+      
+      setBrowserInfo({
+        notificationSupport: supportsNotifications,
+        serviceWorkerSupport: supportsServiceWorker,
+        permission,
+        pusherLoaded
+      });
+
+      addDebugInfo(`🌐 Browser check completed`);
+      addDebugInfo(`📦 Pusher SDK: ${pusherLoaded ? 'Loaded' : 'Not loaded'}`);
+      addDebugInfo(`🔔 Notifications: ${supportsNotifications ? 'Supported' : 'Not supported'}`);
+    };
+
+    checkBrowserSupport();
+  }, []);
 
   // Initialize Pusher Beams - SIMPLE VERSION
   const initializePusher = async () => {
@@ -29,28 +58,28 @@ export default function PusherTestPage() {
       return;
     }
 
+    if (!browserInfo.pusherLoaded) {
+      addDebugInfo('❌ Pusher SDK not loaded');
+      return;
+    }
+
     setStatus('loading');
     addDebugInfo('🚀 Starting Pusher Beams...');
 
     try {
-      // Check if Pusher SDK is loaded
-      if (!window.PusherPushNotifications) {
-        addDebugInfo('❌ Pusher SDK not loaded');
-        setStatus('error');
-        return;
-      }
-
       // Register service worker
-      addDebugInfo('📋 Registering service worker...');
-      await navigator.serviceWorker.register('/service-worker.js');
-      addDebugInfo('✅ Service Worker registered');
+      if (browserInfo.serviceWorkerSupport) {
+        addDebugInfo('📋 Registering service worker...');
+        await navigator.serviceWorker.register('/service-worker.js');
+        addDebugInfo('✅ Service Worker registered');
+      }
 
       // Create beams client
       const beamsClient = new window.PusherPushNotifications.Client({
         instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
       });
 
-      // Start beams client (without user ID first)
+      // Start beams client
       addDebugInfo('🔄 Starting Beams client...');
       await beamsClient.start();
       addDebugInfo('✅ Beams client started');
@@ -92,7 +121,7 @@ export default function PusherTestPage() {
           title: 'Test Notification 🎉',
           body: 'This is a test notification from your chat app!',
           data: {
-            url: window.location.origin,
+            url: typeof window !== 'undefined' ? window.location.origin : '',
             type: 'test'
           }
         })
@@ -102,7 +131,6 @@ export default function PusherTestPage() {
       
       if (response.ok) {
         addDebugInfo('✅ Notification sent successfully!');
-        addDebugInfo(`📨 Response: ${JSON.stringify(result)}`);
       } else {
         addDebugInfo(`❌ Failed: ${result.error}`);
       }
@@ -152,13 +180,6 @@ export default function PusherTestPage() {
     }
   };
 
-  // Initial setup
-  useEffect(() => {
-    addDebugInfo('🔔 Welcome to Pusher Beams Test');
-    addDebugInfo(`📱 Instance ID: ${process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID}`);
-    addDebugInfo(`👤 User: ${user ? 'Logged in' : 'Not logged in'}`);
-  }, [user]);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 py-8">
       <div className="container mx-auto px-4">
@@ -169,17 +190,18 @@ export default function PusherTestPage() {
             </button>
           </Link>
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Pusher Beams Test</h1>
+          <p className="text-gray-600">Test push notifications with Pusher Beams</p>
         </div>
 
         <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6 mb-8">
           {/* Status Card */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg">
             <h3 className="font-semibold text-gray-800 mb-2">Current Status</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><span className="font-medium">User:</span> {user ? '✅ Logged In' : '❌ Not Logged In'}</div>
               <div><span className="font-medium">Subscription:</span> {isSubscribed ? '✅ Active' : '❌ Inactive'}</div>
-              <div><span className="font-medium">Permission:</span> {Notification.permission === 'granted' ? '✅ Granted' : '❌ Not Granted'}</div>
-              <div><span className="font-medium">Pusher SDK:</span> {typeof window.PusherPushNotifications !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</div>
+              <div><span className="font-medium">Permission:</span> {browserInfo.permission === 'granted' ? '✅ Granted' : '❌ Not Granted'}</div>
+              <div><span className="font-medium">Pusher SDK:</span> {browserInfo.pusherLoaded ? '✅ Loaded' : '❌ Not Loaded'}</div>
             </div>
           </div>
 
@@ -187,8 +209,8 @@ export default function PusherTestPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <button
               onClick={initializePusher}
-              disabled={status === 'loading' || !user}
-              className="bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
+              disabled={status === 'loading' || !user || !browserInfo.pusherLoaded}
+              className="bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               {status === 'loading' ? 'Initializing...' : 'Initialize Pusher'}
             </button>
@@ -196,21 +218,21 @@ export default function PusherTestPage() {
             <button
               onClick={sendTestNotification}
               disabled={status === 'loading' || !isSubscribed}
-              className="bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-medium"
+              className="bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-medium text-sm"
             >
               Send Test
             </button>
 
             <button
               onClick={checkStatus}
-              className="bg-purple-500 text-white py-3 px-4 rounded-lg hover:bg-purple-600 transition-colors font-medium"
+              className="bg-purple-500 text-white py-3 px-4 rounded-lg hover:bg-purple-600 transition-colors font-medium text-sm"
             >
               Check Status
             </button>
 
             <button
               onClick={clearAll}
-              className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium"
+              className="bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
             >
               Clear All
             </button>
@@ -222,23 +244,39 @@ export default function PusherTestPage() {
               <h3 className="font-semibold text-gray-800">Debug Information</h3>
             </div>
             <div className="p-4 max-h-64 overflow-y-auto">
-              {debugInfo.map((info, index) => (
-                <div key={index} className="text-sm border-b border-gray-100 py-2 font-mono">
-                  {info}
-                </div>
-              ))}
+              {debugInfo.length === 0 ? (
+                <div className="text-gray-500 text-center py-8">Click buttons above to start testing</div>
+              ) : (
+                debugInfo.map((info, index) => (
+                  <div key={index} className="text-sm border-b border-gray-100 py-2 font-mono">
+                    {info}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
 
         {/* Simple Instructions */}
         <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">Simple Steps to Test:</h3>
-          <ol className="space-y-2 text-gray-600">
-            <li>1. Click <strong>"Initialize Pusher"</strong> - This sets up everything</li>
-            <li>2. Allow notifications when browser asks</li>
-            <li>3. Click <strong>"Send Test"</strong> - Send a test notification</li>
-            <li>4. Check if notification appears on your device</li>
+          <h3 className="text-xl font-bold text-gray-800 mb-4">Testing Steps:</h3>
+          <ol className="space-y-3 text-gray-600">
+            <li className="flex items-start">
+              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">1</span>
+              <span>Click <strong>"Initialize Pusher"</strong> to set up push notifications</span>
+            </li>
+            <li className="flex items-start">
+              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">2</span>
+              <span>Allow notifications when browser asks for permission</span>
+            </li>
+            <li className="flex items-start">
+              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">3</span>
+              <span>Click <strong>"Send Test"</strong> to send a test notification</span>
+            </li>
+            <li className="flex items-start">
+              <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 flex-shrink-0">4</span>
+              <span>Check if notification appears on your device</span>
+            </li>
           </ol>
         </div>
       </div>
