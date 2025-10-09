@@ -1,6 +1,7 @@
 // lib/universal-notifications.ts - FIXED VERSION
 import { DeviceUtils } from './device-utils';
 import toast from 'react-hot-toast';
+import { MobileToast } from '@/components/MobileToast';
 
 export class UniversalNotificationService {
   // Main notification function
@@ -86,45 +87,48 @@ export class UniversalNotificationService {
   }
 
   // Mobile toast without JSX - SIMPLIFIED
-  private static showMobileToastNotification(
-    senderName: string, 
-    message: string, 
-    chatId: string
-  ) {
-    const truncatedMessage = message.length > 50 ? message.substring(0, 50) + '...' : message;
-    
-    // Create simple HTML string instead of JSX
-    const toastContent = `
-      <div onclick="window.location.href='/chat/${chatId}'" style="cursor: pointer;">
-        <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">
-          ${senderName}
-        </div>
-        <div style="color: #374151; font-size: 14px; margin-bottom: 4px;">
-          ${truncatedMessage}
-        </div>
-        <div style="color: #2563EB; font-size: 12px; font-weight: 500;">
-          💬 Tap to open chat
-        </div>
-      </div>
-    `;
+  // lib/universal-notifications.ts - SIMPLE FIX
+private static showMobileToastNotification(
+  senderName: string, 
+  message: string, 
+  chatId: string
+) {
+  const truncatedMessage = message.length > 40 ? message.substring(0, 40) + '...' : message;
+  
+  // Simple text toast
+  const toastText = `💬 ${senderName}: ${truncatedMessage}`;
+  
+  const toastId = toast.success(toastText, {
+    duration: 5000,
+    position: 'top-center',
+    style: {
+      background: '#3B82F6',
+      color: 'white',
+      borderRadius: '12px',
+      padding: '16px',
+      cursor: 'pointer',
+      minWidth: '300px',
+      maxWidth: '90vw',
+      fontSize: '14px',
+      fontWeight: '500',
+    },
+  });
 
-    return toast.success(toastContent, {
-      duration: 6000,
-      position: 'top-center',
-      style: {
-        background: 'white',
-        color: 'black',
-        border: '2px solid #3B82F6',
-        borderRadius: '12px',
-        padding: '16px',
-        cursor: 'pointer',
-        minWidth: '300px',
-        maxWidth: '90vw',
-        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-      },
-      icon: '💬',
-    });
+  // Add click handler
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      const toastElement = document.querySelector(`[data-toast-id="${toastId}"]`);
+      if (toastElement) {
+        toastElement.addEventListener('click', () => {
+          window.location.href = `/chat/${chatId}`;
+          toast.dismiss(toastId);
+        });
+      }
+    }, 100);
   }
+
+  return toastId;
+}
 
   // Fallback toast notification - SIMPLIFIED
   private static showToastNotification(
