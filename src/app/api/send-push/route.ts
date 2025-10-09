@@ -38,8 +38,7 @@ export async function POST(request: NextRequest) {
           },
           webpush: {
             notification: {
-              icon: '/icon-192.png',
-              badge: '/badge.png',
+              
               requireInteraction: true,
             },
             fcmOptions: {

@@ -36,8 +36,7 @@ messaging.onBackgroundMessage((payload) => {
 
   const notificationOptions = {
     body: notificationBody,
-    icon: '/icon-192.png',
-    badge: '/badge-72x72.png',
+   
     tag: `chat-${data.chatId || 'general'}`,
     renotify: true,
     requireInteraction: true,

@@ -31,8 +31,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Chat App" />
         
         {/* ✅ Icons for push notifications */}
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+        {/* <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/icon-192.png" /> */}
       </head>
       <body className={inter.className}>
         <AuthProvider>

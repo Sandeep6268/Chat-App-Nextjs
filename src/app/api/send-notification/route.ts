@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
         targetUrl: targetUrl,
         click_action: targetUrl,
         timestamp: new Date().toISOString(),
-        icon: '/icon-192.png',
+        
         ...data
       },
       webpush: {
