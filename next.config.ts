@@ -9,24 +9,24 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-  // Add this for PWA support
-  async headers() {
-    return [
-      {
-        source: '/firebase-messaging-sw.js',
-        headers: [
-          {
-            key: 'Service-Worker-Allowed',
-            value: '/'
-          },
-          {
-            key: 'Content-Type',
-            value: 'application/javascript'
-          }
-        ]
-      }
-    ];
-  }
+  // Disable server components for now to avoid issues
+  experimental: {
+    serverComponentsExternalPackages: ['firebase-admin'],
+  },
+  // Exclude firebase-admin from client bundle
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        net: false,
+        tls: false,
+        fs: false,
+        child_process: false,
+        http2: false,
+      };
+    }
+    return config;
+  },
 }
 
 module.exports = nextConfig
