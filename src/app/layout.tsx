@@ -11,6 +11,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Chat App',
   description: 'A real-time chat application built with Next.js and Firebase',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
@@ -21,6 +22,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* OneSignal Script */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.OneSignal = window.OneSignal || [];
+            `
+          }}
+        />
+        
         {/* Existing meta tags */}
         <meta name="application-name" content="Chat App" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -40,13 +50,10 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
         <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167x167.png" />
 
-
         {/* Favicon */}
         <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
         <link rel="shortcut icon" href="/favicon.ico" />
-        
-       
       </head>
       <body className={inter.className}>
         <OneSignalInitializer />

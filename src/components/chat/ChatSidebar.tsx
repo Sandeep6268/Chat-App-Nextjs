@@ -36,8 +36,31 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   // Get current chat ID from URL
   const currentChatId = pathname?.split('/chat/')[1];
 
-  // ✅ FIXED: Unread count based notifications
-  useEffect(() => {
+  // components/chat/ChatSidebar.tsx - UPDATED NOTIFICATION LOGIC
+// Add this improved notification function inside the component:
+
+const sendOneSignalNotification = async (senderName: string, message: string, userId: string) => {
+  try {
+    console.log('🔔 Sending OneSignal notification:', { senderName, message, userId });
+    
+    // Get the other user's ID from availableUsers
+    const otherUser = availableUsers.find(u => 
+      u.displayName === senderName || u.email?.includes(senderName)
+    );
+    
+    if (otherUser) {
+      await notificationService.sendChatNotification(senderName, message, otherUser.uid);
+      console.log('✅ OneSignal notification sent successfully');
+    } else {
+      console.log('❌ Other user not found for notification');
+    }
+  } catch (error) {
+    console.error('❌ OneSignal notification failed:', error);
+  }
+};
+
+// Update the useEffect to use this function
+useEffect(() => {
   if (!user) return;
 
   let unsubscribeChats: (() => void) | undefined;
@@ -46,7 +69,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     try {
       setLoading(true);
       
-      // Fetch users (existing code)
+      // Fetch users
       const usersRef = collection(firestore, 'users');
       const usersQuery = query(usersRef, where('uid', '!=', user.uid));
       const usersSnapshot = await getDocs(usersQuery);
@@ -71,43 +94,43 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           chat.participants && chat.participants.includes(user.uid)
         );
         
-        // Calculate total unread and detect changes
+        // Calculate total unread
         const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
         const previousTotal = previousTotalUnreadRef.current;
         
-        console.log(`📊 Unread: ${previousTotal} -> ${totalUnreadMessages}`);
+        console.log(`📊 Unread messages: ${previousTotal} -> ${totalUnreadMessages}`);
         
-        // ✅ FIXED: Send OneSignal notification when unread count increases
+        // Send notification when unread count increases
         if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
-          const newUnreadCount = totalUnreadMessages - previousTotal;
+          const increasedBy = totalUnreadMessages - previousTotal;
+          console.log(`🔔 Unread count increased by ${increasedBy}`);
           
-          console.log(`🔔 Unread increased by ${newUnreadCount}`);
-          
-          // Find which chats have new unread messages
-          const newUnreadChats = userChats.filter(chat => {
+          // Find chats with new unread messages
+          userChats.forEach(async (chat) => {
             const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
             const previousUnread = previousChat?.unreadCount || 0;
-            return (chat.unreadCount || 0) > previousUnread;
-          });
-          
-          // Send OneSignal notification for each new unread chat
-          newUnreadChats.forEach(async (chat) => {
-            const otherUserInfo = getOtherUserInfo(chat);
-            const chatUnreadCount = chat.unreadCount || 0;
+            const currentUnread = chat.unreadCount || 0;
             
-            // Cooldown check - avoid spam
-            const now = Date.now();
-            const lastNotification = notificationCooldownRef.current[chat.id] || 0;
-            
-            if (now - lastNotification > 30000) { // 30 second cooldown per chat
-              notificationCooldownRef.current[chat.id] = now;
+            if (currentUnread > previousUnread) {
+              const otherUserInfo = getOtherUserInfo(chat);
               
-              // Send OneSignal notification
-              await sendOneSignalNotification(
-                otherUserInfo.name,
-                chat.lastMessage || 'New message',
-                chat.id
-              );
+              // Cooldown check
+              const now = Date.now();
+              const lastNotification = notificationCooldownRef.current[chat.id] || 0;
+              
+              if (now - lastNotification > 30000) { // 30 second cooldown
+                notificationCooldownRef.current[chat.id] = now;
+                
+                // Send notification to the OTHER user (not current user)
+                const otherUserId = chat.participants?.find(pid => pid !== user.uid);
+                if (otherUserId) {
+                  await sendOneSignalNotification(
+                    otherUserInfo.name,
+                    chat.lastMessage || 'New message',
+                    otherUserId
+                  );
+                }
+              }
             }
           });
         }
@@ -148,25 +171,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 }, [user, currentChatId]);
-
-// OneSignal notification function
-// Replace the complex sendOneSignalNotification function with:
-const sendOneSignalNotification = async (senderName: string, message: string, chatId: string) => {
-  try {
-    console.log('💬 Chat notification triggered');
-    
-    // Simple notification call
-    await notificationService.sendChatNotification(senderName, message, chatId);
-    
-    console.log('✅ Notification sent');
-  } catch (error) {
-    console.log('💬 New message (notification failed):', {
-      from: senderName,
-      message: message,
-      chatId: chatId
-    });
-  }
-};
 
   // Get other user's info from chat
   const getOtherUserInfo = (chat: Chat) => {
