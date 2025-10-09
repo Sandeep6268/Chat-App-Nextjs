@@ -1,54 +1,55 @@
-// Client-side notification service that calls API routes
+import { firestore } from '@/lib/firebase/client';
+import { collection, doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
+
 export class NotificationService {
-  // Store FCM token for user via API
+  // Store FCM token for user
   static async saveUserFCMToken(userId: string, token: string): Promise<void> {
     try {
-      const response = await fetch('/api/notifications/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          token,
-          action: 'save'
-        }),
+      console.log('💾 Saving FCM token for user:', userId, 'Token:', token.substring(0, 20) + '...');
+      
+      const userRef = doc(firestore, 'users', userId);
+      await updateDoc(userRef, {
+        fcmTokens: arrayUnion(token),
+        updatedAt: new Date(),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save FCM token');
-      }
+      
+      console.log('✅ FCM token saved successfully');
     } catch (error) {
-      console.error('Error saving FCM token:', error);
+      console.error('❌ Error saving FCM token:', error);
       throw error;
     }
   }
 
-  // Remove FCM token for user via API
+  // Remove FCM token for user
   static async removeUserFCMToken(userId: string, token: string): Promise<void> {
     try {
-      const response = await fetch('/api/notifications/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          token,
-          action: 'remove'
-        }),
+      const userRef = doc(firestore, 'users', userId);
+      await updateDoc(userRef, {
+        fcmTokens: arrayRemove(token),
+        updatedAt: new Date(),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to remove FCM token');
-      }
+      console.log('✅ FCM token removed');
     } catch (error) {
-      console.error('Error removing FCM token:', error);
+      console.error('❌ Error removing FCM token:', error);
       throw error;
     }
   }
 
-  // Send push notification for new message via API
+  // Get FCM tokens for a user
+  static async getUserFCMTokens(userId: string): Promise<string[]> {
+    try {
+      const userDoc = await getDoc(doc(firestore, 'users', userId));
+      const userData = userDoc.data();
+      const tokens = userData?.fcmTokens || [];
+      console.log('📱 Retrieved FCM tokens for user:', userId, 'Count:', tokens.length);
+      return tokens;
+    } catch (error) {
+      console.error('❌ Error getting user FCM tokens:', error);
+      return [];
+    }
+  }
+
+  // Send push notification for new message
   static async sendNewMessageNotification({
     recipientId,
     senderName,
@@ -63,6 +64,8 @@ export class NotificationService {
     senderId: string;
   }): Promise<void> {
     try {
+      console.log('📤 Sending new message notification to:', recipientId);
+      
       const response = await fetch('/api/notifications/send', {
         method: 'POST',
         headers: {
@@ -78,18 +81,22 @@ export class NotificationService {
         }),
       });
 
+      const result = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Failed to send notification');
+        console.error('❌ Notification API error:', result);
+        throw new Error(result.error || 'Failed to send notification');
       }
 
-      const result = await response.json();
-      console.log('📤 Notification sent:', result);
+      console.log('✅ Notification sent successfully:', result);
+
     } catch (error) {
-      console.error('Error sending push notification:', error);
+      console.error('❌ Error sending push notification:', error);
+      // Don't throw here to avoid breaking the chat flow
     }
   }
 
-  // Send notification for unread count increase via API
+  // Send notification for unread count increase
   static async sendUnreadCountNotification({
     recipientId,
     senderName,
@@ -100,6 +107,8 @@ export class NotificationService {
     chatId: string;
   }): Promise<void> {
     try {
+      console.log('📤 Sending unread count notification to:', recipientId);
+      
       const response = await fetch('/api/notifications/send', {
         method: 'POST',
         headers: {
@@ -113,14 +122,18 @@ export class NotificationService {
         }),
       });
 
+      const result = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Failed to send unread count notification');
+        console.error('❌ Unread count notification API error:', result);
+        throw new Error(result.error || 'Failed to send unread count notification');
       }
 
-      const result = await response.json();
-      console.log('📤 Unread count notification sent:', result);
+      console.log('✅ Unread count notification sent successfully:', result);
+
     } catch (error) {
-      console.error('Error sending unread count notification:', error);
+      console.error('❌ Error sending unread count notification:', error);
+      // Don't throw here to avoid breaking the chat flow
     }
   }
 }

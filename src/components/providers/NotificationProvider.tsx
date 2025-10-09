@@ -31,7 +31,8 @@ export default function NotificationProvider({ children }: NotificationProviderP
 
   // Auto-initialize notifications when user logs in
   useEffect(() => {
-    if (user && notification.permission === 'default') {
+    if (user) {
+      console.log('👤 User logged in, initializing notifications...');
       notification.initializeNotifications();
     }
   }, [user, notification]);

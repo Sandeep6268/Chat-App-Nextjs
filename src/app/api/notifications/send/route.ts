@@ -19,16 +19,24 @@ export async function POST(request: NextRequest) {
     // Dynamically import Firebase Admin
     const { admin, adminFirestore, adminMessaging } = await import('@/lib/firebase/admin');
 
+    console.log('🔧 Firebase Admin check:', {
+      hasAdmin: !!admin,
+      hasFirestore: !!adminFirestore,
+      hasMessaging: !!adminMessaging,
+      appsLength: admin?.apps?.length || 0
+    });
+
     // Check if Firebase Admin is properly initialized
     if (!adminFirestore || !adminMessaging) {
       console.error('❌ Firebase Admin not properly initialized');
       return NextResponse.json({ 
         error: 'Notification service not available',
-        details: 'Firebase Admin not initialized'
+        details: 'Firebase Admin services not available'
       }, { status: 500 });
     }
 
     // Get user's FCM tokens from Firestore
+    console.log('📖 Fetching user data for:', recipientId);
     const userDoc = await adminFirestore.collection('users').doc(recipientId).get();
     
     if (!userDoc.exists) {
@@ -39,7 +47,7 @@ export async function POST(request: NextRequest) {
     const userData = userDoc.data();
     const tokens = userData?.fcmTokens || [];
 
-    console.log('📱 User FCM tokens:', tokens);
+    console.log('📱 User FCM tokens found:', tokens.length, 'tokens');
 
     if (tokens.length === 0) {
       console.log('ℹ️ No FCM tokens found for user:', recipientId);
@@ -56,33 +64,34 @@ export async function POST(request: NextRequest) {
       payload = {
         title: senderName || 'New Message',
         body: messageText?.length > 100 ? messageText.substring(0, 100) + '...' : messageText || 'You have a new message',
-        data: {
-          chatId,
-          senderId: senderId || 'unknown',
-          type: 'new_message',
-          click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
-        },
       };
     } else if (type === 'unread_count') {
       payload = {
         title: senderName || 'New Messages',
         body: `You have new unread messages`,
-        data: {
-          chatId,
-          senderId: 'system',
-          type: 'unread_count',
-          click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
-        },
       };
     } else {
       return NextResponse.json({ error: 'Invalid notification type' }, { status: 400 });
     }
 
-    console.log('📤 Sending notification with payload:', payload);
+    const messageData = {
+      chatId,
+      senderId: senderId || 'unknown',
+      type: type || 'new_message',
+      click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
+    };
 
+    console.log('📤 Preparing to send notification:', {
+      payload,
+      data: messageData,
+      tokenCount: tokens.length
+    });
+
+    // Create a simpler message format
     const message = {
       tokens,
       notification: payload,
+      data: messageData,
       webpush: {
         headers: {
           Urgency: 'high',
@@ -95,21 +104,18 @@ export async function POST(request: NextRequest) {
           link: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
         },
       },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
-          },
-        },
-      },
     };
 
+    console.log('🚀 Sending FCM message...');
     const response = await adminMessaging.sendEachForMulticast(message);
     
-    console.log('📊 Notification send result:', {
+    console.log('📊 FCM Response:', {
       successCount: response.successCount,
-      failureCount: response.failureCount
+      failureCount: response.failureCount,
+      responses: response.responses.map(r => ({
+        success: r.success,
+        error: r.error?.message || null
+      }))
     });
 
     // Clean up invalid tokens
@@ -119,12 +125,13 @@ export async function POST(request: NextRequest) {
         if (!resp.success) {
           console.error(`❌ Failed to send to token ${tokens[idx]}:`, resp.error);
           
-          if (resp.error?.code === 'messaging/registration-token-not-registered') {
+          if (resp.error?.code === 'messaging/registration-token-not-registered' || 
+              resp.error?.code === 'messaging/invalid-registration-token') {
             try {
               await adminFirestore.collection('users').doc(recipientId).update({
                 fcmTokens: admin.firestore.FieldValue.arrayRemove(tokens[idx]),
               });
-              console.log(`✅ Removed invalid token: ${tokens[idx]}`);
+              console.log(`✅ Removed invalid token: ${tokens[idx].substring(0, 20)}...`);
             } catch (cleanupError) {
               console.error('❌ Error removing invalid token:', cleanupError);
             }
@@ -142,10 +149,19 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error sending notification:', error);
+    console.error('❌ Error in notification API:', error);
+    
+    // More detailed error logging
+    if (error instanceof Error) {
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
+    
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      type: error instanceof Error ? error.name : 'Unknown'
     }, { status: 500 });
   }
 }
