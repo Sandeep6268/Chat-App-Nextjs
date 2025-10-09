@@ -1,4 +1,4 @@
-// components/SimpleNotificationSubscribe.tsx
+// components/SimpleNotificationSubscribe.tsx - UPDATED
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -22,6 +22,11 @@ export default function SimpleNotificationSubscribe() {
         if (subscription) {
           setStatus('✅ Already subscribed to push notifications!');
           console.log('Current subscription:', subscription);
+          
+          // Also set external user ID if user is logged in
+          if (user?.uid) {
+            await setOneSignalExternalUserId(user.uid);
+          }
         } else {
           setStatus('❌ Not subscribed to push notifications');
         }
@@ -33,7 +38,37 @@ export default function SimpleNotificationSubscribe() {
 
   useEffect(() => {
     checkSubscription();
-  }, []);
+  }, [user]);
+
+  // Set external user ID in OneSignal
+  const setOneSignalExternalUserId = async (userId: string) => {
+    try {
+      // OneSignal API call to set external user ID
+      const response = await fetch('https://api.onesignal.com/players', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.ONESIGNAL_REST_API_KEY}`,
+        },
+        body: JSON.stringify({
+          app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
+          external_user_id: userId,
+          // We'll get device_type from the actual subscription
+        }),
+      });
+
+      if (response.ok) {
+        console.log('✅ External user ID set in OneSignal:', userId);
+        return true;
+      } else {
+        console.error('❌ Failed to set external user ID');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error setting external user ID:', error);
+      return false;
+    }
+  };
 
   // Simple subscription function
   const subscribeToPush = async () => {
@@ -69,12 +104,22 @@ export default function SimpleNotificationSubscribe() {
 
       console.log('Push subscription successful:', subscription);
 
-      // Send subscription to your server (simplified - we'll use OneSignal API directly)
-      await sendSubscriptionToServer(subscription);
+      // Send subscription to OneSignal with user ID
+      const subscriptionSent = await sendSubscriptionToOneSignal(subscription);
+
+      if (subscriptionSent && user?.uid) {
+        // Set external user ID
+        await setOneSignalExternalUserId(user.uid);
+      }
 
       setIsSubscribed(true);
-      setStatus('✅ Successfully subscribed! You will now receive notifications.');
+      setStatus('✅ Successfully subscribed! User targeting enabled.');
 
+      // Test notification after subscription
+      setTimeout(() => {
+        testUserTargetedNotification();
+      }, 2000);
+      
     } catch (error: any) {
       console.error('Subscription error:', error);
       setStatus(`❌ Subscription failed: ${error.message}`);
@@ -99,42 +144,53 @@ export default function SimpleNotificationSubscribe() {
     return outputArray;
   };
 
-  // Send subscription to server (simplified - we'll use direct API)
-  const sendSubscriptionToServer = async (subscription: PushSubscription) => {
+  // Send subscription to OneSignal
+  const sendSubscriptionToOneSignal = async (subscription: PushSubscription) => {
     try {
-      // For now, we'll just log it since we're using OneSignal API directly
-      console.log('Push subscription details:', {
-        endpoint: subscription.endpoint,
-        keys: subscription.toJSON().keys
+      const subscriptionData = subscription.toJSON();
+      
+      const response = await fetch('https://api.onesignal.com/players', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.ONESIGNAL_REST_API_KEY}`,
+        },
+        body: JSON.stringify({
+          app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
+          device_type: 11, // Chrome Web Push
+          identifier: subscriptionData.keys?.p256dh,
+          // Add other subscription details as needed
+        }),
       });
-      
-      setStatus('✅ Push subscription created! Testing notification...');
-      
-      // Test notification after subscription
-      setTimeout(() => {
-        testNotificationAfterSubscribe();
-      }, 2000);
-      
+
+      if (response.ok) {
+        console.log('✅ Subscription sent to OneSignal');
+        return true;
+      } else {
+        console.error('❌ Failed to send subscription to OneSignal');
+        return false;
+      }
     } catch (error) {
-      console.error('Error sending subscription to server:', error);
+      console.error('Error sending subscription to OneSignal:', error);
+      return false;
     }
   };
 
-  // Test notification after successful subscription
-  const testNotificationAfterSubscribe = async () => {
+  // Test user-targeted notification
+  const testUserTargetedNotification = async () => {
     if (!user) return;
 
     try {
-      setStatus('Sending test notification...');
+      setStatus('Testing user targeting...');
       
-      const response = await fetch('/api/send-notification', {
+      const response = await fetch('/api/send-user-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: 'Welcome to Notifications! 🎉',
-          message: 'This is your first push notification. You are now subscribed!',
+          title: 'User Target Test 🎯',
+          message: 'This should only come to YOU because of user targeting!',
           userId: user.uid,
         }),
       });
@@ -142,12 +198,12 @@ export default function SimpleNotificationSubscribe() {
       const result = await response.json();
 
       if (response.ok) {
-        setStatus('✅ Test notification sent! Check your notifications.');
+        setStatus('✅ User-targeted test sent! Check if only you received it.');
       } else {
-        throw new Error(result.error || 'Failed to send test');
+        throw new Error(result.error || 'Failed to send');
       }
     } catch (error: any) {
-      console.error('Test notification error:', error);
+      console.error('User target test error:', error);
     }
   };
 
@@ -177,7 +233,7 @@ export default function SimpleNotificationSubscribe() {
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md max-w-md mx-auto border border-green-200">
-      <h3 className="text-lg font-semibold mb-4 text-green-600">🔔 Simple Push Subscription</h3>
+      <h3 className="text-lg font-semibold mb-4 text-green-600">🔔 Fix User Targeting</h3>
       
       <div className="space-y-4">
         <div className="p-3 bg-blue-50 rounded border border-blue-200">
@@ -185,7 +241,7 @@ export default function SimpleNotificationSubscribe() {
             <strong>Status:</strong> {status}
           </p>
           <p className="text-xs text-blue-600 mt-1">
-            {isSubscribed ? 'Subscribed' : 'Not subscribed'}
+            {isSubscribed ? 'Subscribed + User Targeting' : 'Not subscribed'}
           </p>
         </div>
 
@@ -195,13 +251,13 @@ export default function SimpleNotificationSubscribe() {
             disabled={loading}
             className="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors font-semibold"
           >
-            {loading ? 'Subscribing...' : 'Subscribe to Push Notifications'}
+            {loading ? 'Subscribing...' : 'Subscribe + Enable User Targeting'}
           </button>
         ) : (
           <div className="space-y-2">
             <div className="p-3 bg-green-50 rounded border border-green-200">
               <p className="text-sm text-green-700">
-                ✅ You are subscribed to push notifications!
+                ✅ You are subscribed with user targeting!
               </p>
             </div>
             <button
@@ -223,8 +279,7 @@ export default function SimpleNotificationSubscribe() {
 
         <div className="p-3 bg-yellow-50 rounded border border-yellow-200">
           <p className="text-xs text-yellow-700">
-            <strong>Note:</strong> This uses browser's native Push API instead of OneSignal SDK.
-            More reliable and fewer errors.
+            <strong>Fix:</strong> This version properly sets external_user_id in OneSignal for user targeting.
           </p>
         </div>
       </div>

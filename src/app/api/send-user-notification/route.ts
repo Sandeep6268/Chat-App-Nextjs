@@ -1,33 +1,33 @@
-// app/api/send-notification/route.ts - UPDATED
+// app/api/send-user-notification/route.ts - NEW
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const { title, message, userId } = await request.json();
 
+    console.log('🎯 Sending USER-TARGETED notification:', { title, message, userId });
+
     // Validate environment
     if (!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || !process.env.ONESIGNAL_REST_API_KEY) {
       throw new Error('OneSignal configuration missing');
     }
 
-    const payload: any = {
+    // CRITICAL: For user targeting, we need to use include_external_user_ids
+    const payload = {
       app_id: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID,
       headings: { en: title },
       contents: { en: message },
       url: process.env.NEXT_PUBLIC_APP_URL || 'https://chat-app-nextjs-gray-eta.vercel.app',
       chrome_web_icon: '/icons/icon-192x192.png',
+      
+      // 🎯 THIS IS THE KEY FOR USER TARGETING
+      include_external_user_ids: [userId],
+      
+      // Important: Don't use included_segments when targeting specific users
+      // included_segments: ['All'] // ❌ REMOVE THIS for user targeting
     };
 
-    // 🎯 SMART TARGETING LOGIC
-    if (userId && userId !== 'broadcast') {
-      // Specific user targeting
-      payload.include_external_user_ids = [userId];
-      console.log('🎯 Targeting specific user:', userId);
-    } else {
-      // Broadcast to all subscribed users
-      payload.included_segments = ['Subscribed Users'];
-      console.log('📢 Broadcasting to all users');
-    }
+    console.log('🚀 User-Targeted Payload:', JSON.stringify(payload, null, 2));
 
     const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
@@ -40,18 +40,25 @@ export async function POST(request: NextRequest) {
 
     const result = await response.json();
 
+    console.log('📡 OneSignal Response:', {
+      status: response.status,
+      result: result
+    });
+
     if (!response.ok) {
-      throw new Error(result.errors?.join(', ') || 'OneSignal API failed');
+      throw new Error(result.errors?.join(', ') || `OneSignal API failed: ${response.status}`);
     }
 
+    console.log('✅ User-targeted notification sent successfully');
+    
     return NextResponse.json({
       success: true,
-      message: userId ? 'User-targeted notification sent' : 'Broadcast notification sent',
+      message: 'User-targeted notification sent',
       data: result,
     });
 
   } catch (error: any) {
-    console.error('Notification error:', error);
+    console.error('❌ User-targeted notification error:', error);
     
     return NextResponse.json(
       {
