@@ -1,20 +1,21 @@
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
 
+// 🔥 NEW TESTING PROJECT CONFIG
 firebase.initializeApp({
-  apiKey: 'AIzaSyAabTzeCwbsnkgWE7d2y4_aAvDlyXv_QUo',
-  authDomain: 'whatsapp-clone-69386.firebaseapp.com',
-  projectId: 'whatsapp-clone-69386',
-  storageBucket: 'whatsapp-clone-69386.firebasestorage.app',
-  messagingSenderId: '580532933743',
-  appId: '1:580532933743:web:d74eca375178f6a3c2699a'
+  apiKey: 'AIzaSyDbm_Omf6O5OVoWulA6KaJjyDBr5V2Vy6A',
+  authDomain: 'chat-app-testing-234fc.firebaseapp.com',
+  projectId: 'chat-app-testing-234fc',
+  storageBucket: 'chat-app-testing-234fc.firebasestorage.app',
+  messagingSenderId: '1024725461365',
+  appId: '1:1024725461365:web:3381b37b2593781ff38b3c'
 });
 
 const messaging = firebase.messaging();
 
 // Handle background messages
 messaging.onBackgroundMessage((payload) => {
-  console.log('📨 Received background message:', payload);
+  console.log('📨 Received background message from NEW PROJECT:', payload);
 
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {

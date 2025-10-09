@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin';
 // Check if Firebase Admin is already initialized
 if (!admin.apps.length) {
   try {
-    // For Vercel deployment, we need to handle the private key properly
+    // Use NEW PROJECT credentials from environment
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
     
     if (!privateKey) {
@@ -12,13 +12,13 @@ if (!admin.apps.length) {
 
     admin.initializeApp({
       credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        projectId: process.env.FIREBASE_PROJECT_ID || 'chat-app-testing-234fc',
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@chat-app-testing-234fc.iam.gserviceaccount.com',
         // Replace escaped newlines in the private key
         privateKey: privateKey.replace(/\\n/g, '\n'),
       }),
     });
-    console.log('✅ Firebase Admin initialized successfully');
+    console.log('✅ Firebase Admin initialized with NEW TESTING PROJECT');
   } catch (error) {
     console.error('❌ Firebase Admin initialization error:', error);
     // Don't throw error here to prevent build failures
