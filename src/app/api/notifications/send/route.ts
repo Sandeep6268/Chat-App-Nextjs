@@ -4,7 +4,7 @@ export async function POST(request: NextRequest) {
   try {
     const { recipientId, senderName, messageText, chatId, senderId, type } = await request.json();
 
-    console.log('📨 Notification request:', { recipientId, senderId, chatId });
+    console.log('📨 Sending notification to:', recipientId);
 
     if (!recipientId || !chatId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     // Dynamically import Firebase Admin
     const { adminFirestore, adminMessaging } = await import('@/lib/firebase/admin');
 
-    // Get user's FCM tokens - SIMPLE APPROACH
+    // Get user's FCM tokens
     const userDoc = await adminFirestore.collection('users').doc(recipientId).get();
     
     if (!userDoc.exists) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     const userData = userDoc.data();
     const tokens = userData?.fcmTokens || [];
 
-    console.log('📱 FCM tokens:', tokens.length);
+    console.log('📱 User FCM tokens:', tokens.length);
 
     if (tokens.length === 0) {
       return NextResponse.json({ 
@@ -32,42 +32,44 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get sender info for notification
-    const senderDoc = await adminFirestore.collection('users').doc(senderId).get();
-    const senderData = senderDoc.data();
-    const actualSenderName = senderData?.displayName || senderData?.email?.split('@')[0] || 'Someone';
+    // Get sender's actual name
+    let actualSenderName = 'User';
+    try {
+      const senderDoc = await adminFirestore.collection('users').doc(senderId).get();
+      if (senderDoc.exists) {
+        const senderData = senderDoc.data();
+        actualSenderName = senderData?.displayName || senderData?.email?.split('@')[0] || 'User';
+      }
+    } catch (error) {
+      console.log('⚠️ Using default sender name');
+    }
 
-    // SIMPLE NOTIFICATION PAYLOAD
-    const notificationPayload = {
-      title: `${actualSenderName}`, // ACTUAL NAME
-      body: messageText?.length > 50 ? messageText.substring(0, 50) + '...' : messageText || 'Sent you a message',
-    };
-
-    // DATA PAYLOAD for service worker
+    // NOTIFICATION DATA (goes to service worker - MOST IMPORTANT)
     const dataPayload = {
-      title: `${actualSenderName}`,
-      body: messageText?.length > 50 ? messageText.substring(0, 50) + '...' : messageText,
+      title: `${actualSenderName}`, // ACTUAL NAME
+      body: messageText || 'Sent you a message',
       chatId: chatId,
-      senderId: senderId,
-      type: 'new_message',
-      click_action: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`
+      senderId: senderId
     };
 
-    console.log('📤 Sending notification:', {
-      title: notificationPayload.title,
+    console.log('📤 Notification payload:', {
+      title: dataPayload.title,
       chatId: chatId
     });
 
-    // SIMPLE MESSAGE
+    // MESSAGE with BOTH notification and data
     const message = {
       tokens: tokens,
-      notification: notificationPayload,
-      data: dataPayload, // This goes to service worker
+      notification: {
+        title: `${actualSenderName}`,
+        body: messageText?.length > 50 ? messageText.substring(0, 50) + '...' : messageText || 'Sent you a message'
+      },
+      data: dataPayload, // This is CRITICAL for service worker
       webpush: {
         fcmOptions: {
           link: `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`,
         },
-      },
+      }
     };
 
     // SEND NOTIFICATION
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest) {
       sent: response.successCount,
       failed: response.failureCount,
       notification: {
-        title: notificationPayload.title,
+        title: dataPayload.title,
         chatId: chatId
       }
     });

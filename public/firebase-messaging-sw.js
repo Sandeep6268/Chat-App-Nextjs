@@ -12,50 +12,42 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Handle background messages
+// Handle background messages - SIMPLE & RELIABLE
 messaging.onBackgroundMessage((payload) => {
-  console.log('📨 Received background message:', payload);
-
-  // Use data from payload if notification is not available
-  const title = payload.data?.title || payload.notification?.title || 'New Message';
-  const body = payload.data?.body || payload.notification?.body || 'You have a new message';
+  console.log('📨 Background message received');
+  
+  // ALWAYS use data from payload (more reliable)
+  const title = payload.data?.title || 'New Message';
+  const body = payload.data?.body || 'You have a new message';
   const chatId = payload.data?.chatId;
 
   const notificationOptions = {
     body: body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/badge-72x72.png',
-    data: payload.data || { chatId: chatId },
-    tag: chatId || 'general-chat',
-    requireInteraction: false,
-    vibrate: [200, 100, 200],
-    actions: [
-      {
-        action: 'open',
-        title: 'Open Chat'
-      }
-    ]
+    data: { 
+      chatId: chatId,
+      url: chatId ? `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}` : 'https://chat-app-nextjs-gray-eta.vercel.app/chat'
+    },
+    tag: 'chat-message',
+    requireInteraction: false
   };
 
   console.log('🔄 Showing notification:', title);
-  self.registration.showNotification(title, notificationOptions);
+  return self.registration.showNotification(title, notificationOptions);
 });
 
-// Handle notification click - SIMPLE & WORKING
+// Handle notification click - WORKING REDIRECT
 self.addEventListener('notificationclick', (event) => {
   console.log('🔔 Notification clicked');
   event.notification.close();
 
   const chatId = event.notification.data?.chatId;
-  let url = 'https://chat-app-nextjs-gray-eta.vercel.app/chat';
-  
-  if (chatId && chatId !== 'undefined' && chatId !== 'test-chat-id') {
-    url = `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`;
-  }
+  const url = event.notification.data?.url || 'https://chat-app-nextjs-gray-eta.vercel.app/chat';
 
-  console.log('🔗 Redirecting to:', url);
+  console.log('🔗 Opening:', url);
 
-  // SIMPLE REDIRECT - Always open the URL
+  // SIMPLE & RELIABLE REDIRECT
   event.waitUntil(
     clients.openWindow(url)
   );
