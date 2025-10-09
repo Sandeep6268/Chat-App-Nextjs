@@ -22,14 +22,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* OneSignal Script */}
+       {/* OneSignal SDK Script */}
         <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.OneSignal = window.OneSignal || [];
-            `
-          }}
-        />
+          src="https://cdn.onesignal.com/sdks/OneSignalSDK.js"
+          async
+        ></script>
         
         {/* Existing meta tags */}
         <meta name="application-name" content="Chat App" />
@@ -57,8 +54,7 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          <OneSignalProvider>
-
+          <OneSignalProvider />
           {children}
           <Toaster 
             position="top-right"
@@ -82,7 +78,6 @@ export default function RootLayout({
               },
             }}
           />
-              </OneSignalProvider>
         </AuthProvider>
       </body>
     </html>
