@@ -1,19 +1,22 @@
-// lib/notifications.ts - ADD MISSING METHOD
+// lib/notifications.ts - FINAL
 export class NotificationService {
   
-  // Safe permission check
   async requestPermission(): Promise<boolean> {
     try {
-      if (typeof window === 'undefined') return false;
-      
-      if ('Notification' in window && window.OneSignal) {
-        // Use OneSignal for permission
+      if (typeof window === 'undefined' || !window.OneSignal) {
+        return false;
+      }
+
+      // Wait for OneSignal to be ready
+      if (typeof window.OneSignal.showSlidedownPrompt === 'function') {
         await window.OneSignal.showSlidedownPrompt();
         
-        // Check result after a delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const isSubscribed = await window.OneSignal.isPushNotificationsEnabled();
-        return isSubscribed;
+        // Check subscription after delay
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        if (typeof window.OneSignal.isPushNotificationsEnabled === 'function') {
+          return await window.OneSignal.isPushNotificationsEnabled();
+        }
       }
       
       return false;
@@ -23,8 +26,7 @@ export class NotificationService {
     }
   }
 
-  // 🔥 ADD THIS MISSING METHOD
-  async sendNotification(title: string, message: string, userId?: string) {
+  async sendTestNotification(title: string, message: string, userId?: string) {
     try {
       const response = await fetch('/api/send-notification', {
         method: 'POST',
@@ -51,14 +53,8 @@ export class NotificationService {
     }
   }
 
-  // 🔥 KEEP THIS METHOD FOR BACKWARD COMPATIBILITY
-  async sendTestNotification(title: string, message: string, userId?: string) {
-    return this.sendNotification(title, message, userId);
-  }
-
-  // Send chat notification
   async sendChatNotification(senderName: string, message: string, chatId: string) {
-    return this.sendNotification(
+    return this.sendTestNotification(
       `New message from ${senderName}`,
       message.length > 50 ? message.substring(0, 50) + '...' : message
     );

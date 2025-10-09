@@ -1,4 +1,4 @@
-// components/notifications/DebugNotifications.tsx - ALTERNATIVE FIX
+// components/notifications/DebugNotifications.tsx - FIXED
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,29 +10,39 @@ export default function DebugNotifications() {
   const [message, setMessage] = useState('');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('checking...');
   const [notificationPermission, setNotificationPermission] = useState<string>('checking...');
+  const [oneSignalReady, setOneSignalReady] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
-    // Safe check for browser APIs
-    const checkStatus = async () => {
+    const checkStatus = () => {
       if (typeof window !== 'undefined') {
         // Update permission status
         setNotificationPermission(Notification.permission);
         
-        // Check OneSignal subscription
-        if (window.OneSignal) {
-          try {
-            const isSubscribed = await window.OneSignal.isPushNotificationsEnabled();
-            setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
-          } catch (error) {
-            setSubscriptionStatus('❓ Unknown');
-          }
+        // Check if OneSignal is properly loaded
+        const isReady = window.OneSignal && 
+                       typeof window.OneSignal.showSlidedownPrompt === 'function' &&
+                       typeof window.OneSignal.isPushNotificationsEnabled === 'function';
+        
+        setOneSignalReady(isReady);
+        
+        // Check OneSignal subscription if ready
+        if (isReady) {
+          window.OneSignal.isPushNotificationsEnabled()
+            .then((isSubscribed: boolean) => {
+              setSubscriptionStatus(isSubscribed ? '✅ Subscribed' : '❌ Not Subscribed');
+            })
+            .catch(() => {
+              setSubscriptionStatus('❓ Unknown');
+            });
+        } else {
+          setSubscriptionStatus('⏳ Loading...');
         }
       }
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 3000);
+    const interval = setInterval(checkStatus, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -40,11 +50,11 @@ export default function DebugNotifications() {
     setLoading(true);
     setMessage('');
     try {
-      if (typeof window !== 'undefined' && window.OneSignal) {
+      if (oneSignalReady) {
         await window.OneSignal.showSlidedownPrompt();
         setMessage('✅ Notification prompt shown! Please allow notifications.');
       } else {
-        setMessage('❌ OneSignal not loaded yet');
+        setMessage('❌ OneSignal not ready yet. Please wait...');
       }
     } catch (error: any) {
       setMessage(`❌ Error: ${error.message}`);
@@ -62,7 +72,6 @@ export default function DebugNotifications() {
     setLoading(true);
     setMessage('');
     try {
-      // 🔥 FIX: Use sendTestNotification instead of sendNotification
       await notificationService.sendTestNotification(
         'Test Notification 🔔',
         'This is a test notification from your chat app!',
@@ -77,13 +86,15 @@ export default function DebugNotifications() {
   };
 
   const handleManualSubscribe = async () => {
-    if (typeof window !== 'undefined' && window.OneSignal) {
+    if (oneSignalReady) {
       try {
         await window.OneSignal.registerForPushNotifications();
         setMessage('🔔 Manual subscription requested!');
       } catch (error) {
         setMessage('❌ Manual subscription failed');
       }
+    } else {
+      setMessage('❌ OneSignal not ready');
     }
   };
 
@@ -104,7 +115,7 @@ export default function DebugNotifications() {
       <div className="space-y-3">
         <button
           onClick={handleEnableNotifications}
-          disabled={loading}
+          disabled={loading || !oneSignalReady}
           className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
         >
           {loading ? 'Loading...' : '🔔 Enable Notifications'}
@@ -112,7 +123,7 @@ export default function DebugNotifications() {
         
         <button
           onClick={handleManualSubscribe}
-          disabled={loading}
+          disabled={loading || !oneSignalReady}
           className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50"
         >
           Manual Subscribe
@@ -129,15 +140,15 @@ export default function DebugNotifications() {
 
       <div className="mt-4 p-3 bg-gray-50 rounded text-sm space-y-2">
         <p><strong>Status:</strong> {user ? '✅ Logged in' : '❌ Not logged in'}</p>
-        <p><strong>OneSignal:</strong> {typeof window !== 'undefined' && window.OneSignal ? '✅ Loaded' : '❌ Loading...'}</p>
+        <p><strong>OneSignal:</strong> {oneSignalReady ? '✅ Ready' : '⏳ Loading...'}</p>
         <p><strong>Subscription:</strong> {subscriptionStatus}</p>
         <p><strong>Permission:</strong> {notificationPermission}</p>
       </div>
 
-      {subscriptionStatus.includes('❌') && (
+      {!oneSignalReady && (
         <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded">
           <p className="text-sm text-yellow-800">
-            <strong>⚠️ Not Subscribed:</strong> Click "Enable Notifications" and allow browser notifications to receive alerts.
+            <strong>⏳ OneSignal Loading:</strong> Please wait for OneSignal to initialize...
           </p>
         </div>
       )}
