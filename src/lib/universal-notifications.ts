@@ -1,4 +1,4 @@
-// lib/universal-notifications.ts - COMPLETE FIXED VERSION
+// lib/universal-notifications.ts - SIMPLE DEBUG VERSION
 import { DeviceUtils } from './device-utils';
 import { FCMService } from './fcm-service';
 import toast from 'react-hot-toast';
@@ -8,65 +8,80 @@ export class UniversalNotificationService {
 
   // Initialize FCM for user
   static async initializeFCM(userId: string): Promise<boolean> {
+    console.log('🎯 [FCM] initializeFCM called for user:', userId);
+    
     if (this.fcmInitialized) {
-      console.log('🔔 FCM: Already initialized');
+      console.log('✅ [FCM] Already initialized');
       return true;
     }
 
     if (!DeviceUtils.isMobile()) {
-      console.log('🔔 FCM: Skipping initialization - not mobile device');
+      console.log('📱 [FCM] Not mobile device - skipping FCM');
       return false;
     }
 
-    console.log('🚀 FCM: Initializing for mobile user:', userId);
+    console.log('🚀 [FCM] Starting FCM initialization...');
     
     const isSupported = await FCMService.isSupported();
+    console.log('🔧 [FCM] Supported check:', isSupported);
+    
     if (!isSupported) {
-      console.log('❌ FCM: Not supported on this device');
+      console.log('❌ [FCM] Not supported on this device');
       return false;
     }
 
     try {
       // Request permission and get token
+      console.log('🔔 [FCM] Requesting permission...');
       const token = await FCMService.requestPermission(userId);
       
       if (token) {
-        console.log('✅ FCM: Initialized successfully');
+        console.log('✅ [FCM] Initialized successfully with token');
         
         // Listen for foreground messages
         FCMService.onMessage((payload) => {
-          console.log('📱 FCM: Foreground message received:', payload);
+          console.log('📨 [FCM] NEW MESSAGE RECEIVED:', {
+            title: payload.notification?.title,
+            body: payload.notification?.body,
+            data: payload.data
+          });
           this.handleForegroundMessage(payload);
         });
 
         this.fcmInitialized = true;
         return true;
       } else {
-        console.log('❌ FCM: Initialization failed - no token');
+        console.log('❌ [FCM] Initialization failed - no token received');
         return false;
       }
     } catch (error) {
-      console.error('❌ FCM: Initialization error:', error);
+      console.error('💥 [FCM] Initialization error:', error);
       return false;
     }
   }
 
   // Handle foreground messages
   private static handleForegroundMessage(payload: any) {
+    console.log('🔄 [FCM] Handling foreground message');
+    
     try {
       const notification = payload.notification || payload.data;
       const { title, body, data } = notification;
+      
+      console.log('📝 [FCM] Message details:', { title, body, data });
       
       if (title && body) {
         // Remove emoji from title for sender name
         const senderName = title.replace('💬 ', '');
         const chatId = data?.chatId || 'unknown';
         
-        console.log('📱 FCM: Showing toast for foreground message');
+        console.log('📱 [FCM] Showing toast for:', senderName);
         this.showMobileToastNotification(senderName, body, chatId);
+      } else {
+        console.log('⚠️ [FCM] No title/body in message');
       }
     } catch (error) {
-      console.error('❌ FCM: Error handling foreground message:', error);
+      console.error('💥 [FCM] Error handling message:', error);
     }
   }
 
@@ -77,15 +92,18 @@ export class UniversalNotificationService {
     targetUserId: string, 
     chatId: string
   ) {
-    console.log('🔔 Sending notification:', {
-      senderName,
-      targetUserId,
-      chatId,
+    console.log('🔔 [NOTIFICATION] Sending:', {
+      from: senderName,
+      to: targetUserId,
+      chat: chatId,
+      message: message.substring(0, 50) + '...',
       isMobile: DeviceUtils.isMobile()
     });
 
     try {
       if (DeviceUtils.isMobile()) {
+        console.log('📱 [NOTIFICATION] Using FCM for mobile');
+        
         // Mobile - Try FCM push notification
         const pushResult = await this.sendFCMPushNotification(
           targetUserId,
@@ -94,19 +112,21 @@ export class UniversalNotificationService {
           chatId
         );
 
+        console.log('📊 [NOTIFICATION] FCM Result:', pushResult);
+
         if (pushResult.success) {
-          console.log('✅ FCM Push notification sent successfully');
+          console.log('✅ [NOTIFICATION] FCM Push sent successfully');
           return pushResult;
         } else {
-          console.log('🔄 FCM failed, falling back to toast');
+          console.log('🔄 [NOTIFICATION] FCM failed, using toast fallback');
           return this.showMobileToastNotification(senderName, message, chatId);
         }
       } else {
-        // Desktop - Browser notifications
+        console.log('💻 [NOTIFICATION] Using browser notifications for desktop');
         return this.sendDesktopNotification(senderName, message, chatId);
       }
     } catch (error) {
-      console.error('❌ Notification error:', error);
+      console.error('💥 [NOTIFICATION] Error:', error);
       return this.showToastNotification(senderName, message, chatId);
     }
   }
@@ -118,29 +138,36 @@ export class UniversalNotificationService {
     message: string,
     chatId: string
   ) {
+    console.log('🚀 [FCM PUSH] Sending to user:', targetUserId);
+    
     try {
-      console.log('🚀 Sending FCM push to user:', targetUserId);
-      
+      const payload = {
+        targetUserId,
+        title: `💬 ${senderName}`,
+        body: message,
+        data: { chatId, type: 'message' },
+      };
+
+      console.log('📤 [FCM PUSH] API Payload:', payload);
+
       const response = await fetch('/api/send-push-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          targetUserId,
-          title: `💬 ${senderName}`,
-          body: message,
-          data: { chatId, type: 'message' },
-        }),
+        body: JSON.stringify(payload),
       });
+
+      console.log('📡 [FCM PUSH] API Response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        console.error('❌ [FCM PUSH] API Error:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
-      console.log('✅ FCM API Response:', result);
+      console.log('✅ [FCM PUSH] API Success:', result);
       
       return { 
         success: true, 
@@ -149,7 +176,7 @@ export class UniversalNotificationService {
       };
 
     } catch (error: any) {
-      console.error('❌ FCM Push Error:', error);
+      console.error('💥 [FCM PUSH] Error:', error.message);
       return { 
         success: false, 
         type: 'push',
@@ -164,27 +191,33 @@ export class UniversalNotificationService {
     message: string, 
     chatId: string
   ) {
+    console.log('💻 [DESKTOP] Sending browser notification');
+    
     try {
       if (!('Notification' in window)) {
-        console.log('❌ Desktop: Notifications not supported');
+        console.log('❌ [DESKTOP] Notifications not supported');
         return this.showToastNotification(senderName, message, chatId);
       }
 
+      console.log('🔔 [DESKTOP] Current permission:', Notification.permission);
+
       if (Notification.permission === 'denied') {
-        console.log('❌ Desktop: Notifications denied by user');
+        console.log('❌ [DESKTOP] Notifications denied by user');
         return this.showToastNotification(senderName, message, chatId);
       }
 
       if (Notification.permission === 'default') {
-        console.log('🔔 Desktop: Requesting notification permission');
+        console.log('🔄 [DESKTOP] Requesting permission...');
         const permission = await Notification.requestPermission();
+        console.log('🔔 [DESKTOP] Permission result:', permission);
+        
         if (permission !== 'granted') {
-          console.log('❌ Desktop: Permission not granted');
+          console.log('❌ [DESKTOP] Permission not granted');
           return this.showToastNotification(senderName, message, chatId);
         }
       }
 
-      console.log('✅ Desktop: Showing browser notification');
+      console.log('✅ [DESKTOP] Creating notification');
       const notification = new Notification(`💬 ${senderName}`, {
         body: message,
         icon: '/icons/icon-192x192.png',
@@ -194,19 +227,20 @@ export class UniversalNotificationService {
       });
 
       notification.onclick = () => {
-        console.log('📍 Desktop: Notification clicked, navigating to chat');
+        console.log('📍 [DESKTOP] Notification clicked, navigating to chat');
         window.location.href = `/chat/${chatId}`;
         notification.close();
       };
 
       setTimeout(() => {
         notification.close();
+        console.log('⏰ [DESKTOP] Notification auto-closed');
       }, 7000);
 
       return { success: true, type: 'desktop' };
 
     } catch (error) {
-      console.error('❌ Desktop notification error:', error);
+      console.error('💥 [DESKTOP] Error:', error);
       return this.showToastNotification(senderName, message, chatId);
     }
   }
@@ -219,7 +253,7 @@ export class UniversalNotificationService {
   ) {
     const truncatedMessage = message.length > 40 ? message.substring(0, 40) + '...' : message;
     
-    console.log('📱 Showing mobile toast notification');
+    console.log('📱 [TOAST] Showing mobile toast:', { senderName, chatId });
     
     const toastId = toast.success(
       `💬 ${senderName}\n${truncatedMessage}`,
@@ -246,7 +280,7 @@ export class UniversalNotificationService {
       const toastElement = document.querySelector(`[data-toast-id="${toastId}"]`);
       if (toastElement) {
         toastElement.addEventListener('click', () => {
-          console.log('📍 Mobile toast clicked, navigating to chat');
+          console.log('📍 [TOAST] Clicked, navigating to chat:', chatId);
           window.location.href = `/chat/${chatId}`;
           toast.dismiss(toastId);
         });
@@ -264,7 +298,7 @@ export class UniversalNotificationService {
   ) {
     const truncatedMessage = message.length > 60 ? message.substring(0, 60) + '...' : message;
 
-    console.log('🔄 Showing fallback toast notification');
+    console.log('🔄 [FALLBACK] Showing toast notification');
 
     toast.success(
       `💬 ${senderName}: ${truncatedMessage}`,
@@ -287,19 +321,35 @@ export class UniversalNotificationService {
 
   // Test function
   static async testNotifications(userId?: string) {
+    console.log('🧪 [TEST] Starting notification test...');
+    
     const deviceType = DeviceUtils.isMobile() ? '📱 Mobile' : '💻 Desktop';
     console.log(`${deviceType} Device Detected`);
 
     if (DeviceUtils.isMobile() && userId) {
-      console.log('🚀 Testing FCM initialization...');
+      console.log('🚀 [TEST] Testing FCM initialization...');
       await this.initializeFCM(userId);
     }
 
-    return this.sendNotification(
+    const result = await this.sendNotification(
       'Test User',
       'This is a test notification! ' + new Date().toLocaleTimeString(),
       userId || 'test-user',
       'test-chat'
     );
+
+    console.log('📊 [TEST] Test result:', result);
+    return result;
+  }
+
+  // Debug function to check FCM status
+  static getFCMStatus() {
+    return {
+      fcmInitialized: this.fcmInitialized,
+      isMobile: DeviceUtils.isMobile(),
+      notificationPermission: Notification.permission,
+      supportsNotifications: 'Notification' in window,
+      supportsServiceWorker: 'serviceWorker' in navigator,
+    };
   }
 }
