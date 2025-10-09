@@ -1,3 +1,4 @@
+// components/chat/ChatWindow.tsx - UPDATED
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -5,7 +6,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
-
+import { ChatNotificationService } from '@/lib/chat-notification-service';
 
 interface ChatWindowProps {
   chatId: string;
@@ -26,7 +27,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // ✅ FIXED: useEffect with proper notification logic
+  // ✅ UPDATED: useEffect with Pusher notifications
   useEffect(() => {
     if (!chatId || !user) return;
 
@@ -52,12 +53,17 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
               isFocused: document.hasFocus()
             });
 
-            // ✅ FIXED: Only send notification if chat is NOT active
+            // ✅ UPDATED: Only send notification if chat is NOT active
             if (!isChatActive) {
               console.log('🚀 [CHAT] Sending push notification...');
               
               // Send push notification for new message
-              
+              await ChatNotificationService.sendMessageNotification(
+                otherUser.uid,
+                user.displayName || 'Someone',
+                message.text,
+                chatId
+              );
             }
           }
         });
@@ -113,6 +119,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
     }
   };
 
+  // ... (REST OF THE CHATWINDOW CODE REMAINS THE SAME)
   // 🕒 Improved time formatting
   const formatMessageTime = (timestamp: { toDate: () => Date } | null) => {
     if (!timestamp) return '';

@@ -3,25 +3,50 @@
 
 import { useEffect } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { PusherBeamsClient } from '@/lib/pusher-beams-client';
+
+declare global {
+  interface Window {
+    PusherPushNotifications?: any;
+  }
+}
 
 export default function PusherProvider() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      // Initialize Pusher Beams for logged-in user
-      PusherBeamsClient.initialize(user.uid);
-    } else {
-      // Cleanup when user logs out
-      PusherBeamsClient.cleanup();
-    }
+    if (!user) return;
+
+    const initializePusher = async () => {
+      try {
+        // Check if Pusher SDK is loaded
+        if (!window.PusherPushNotifications) {
+          console.log('❌ Pusher SDK not loaded yet');
+          return;
+        }
+
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+          await navigator.serviceWorker.register('/service-worker.js');
+          console.log('✅ Service Worker registered for Pusher');
+        }
+
+        // Create and start beams client
+        const beamsClient = new window.PusherPushNotifications.Client({
+          instanceId: process.env.NEXT_PUBLIC_PUSHER_BEAMS_INSTANCE_ID!,
+        });
+
+        await beamsClient.start();
+        console.log('✅ Pusher Beams initialized for user:', user.uid);
+
+      } catch (error) {
+        console.error('❌ Pusher initialization error:', error);
+      }
+    };
+
+    initializePusher();
 
     return () => {
-      // Cleanup on component unmount
-      if (user) {
-        PusherBeamsClient.cleanup();
-      }
+      // Cleanup if needed
     };
   }, [user]);
 
