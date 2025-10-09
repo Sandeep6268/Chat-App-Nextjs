@@ -1,95 +1,64 @@
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAabTzeCwbsnkgWE7d2y4_aAvDlyXv_QUo",
-  authDomain: "whatsapp-clone-69386.firebaseapp.com",
-  projectId: "whatsapp-clone-69386",
-  storageBucket: "whatsapp-clone-69386.firebasestorage.app",
-  messagingSenderId: "580532933743",
-  appId: "1:580532933743:web:d74eca375178f6a3c2699a"
-};
+firebase.initializeApp({
+  apiKey: 'AIzaSyAabTzeCwbsnkgWE7d2y4_aAvDlyXv_QUo',
+  authDomain: 'whatsapp-clone-69386.firebaseapp.com',
+  projectId: 'whatsapp-clone-69386',
+  storageBucket: 'whatsapp-clone-69386.firebasestorage.app',
+  messagingSenderId: '580532933743',
+  appId: '1:580532933743:web:d74eca375178f6a3c2699a'
+});
 
-firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-console.log('✅ [SW] Service Worker Loaded - Mobile Fix');
-
-// ✅ FIXED: Background message handler for both mobile & desktop
+// Handle background messages
 messaging.onBackgroundMessage((payload) => {
-  console.log('📬 [SW] Background message received:', payload);
-  
-  // Extract data from both places for compatibility
-  const notificationTitle = payload.data?.title || payload.notification?.title || 'New Message';
-  const notificationBody = payload.data?.body || payload.notification?.body || 'You have a new message';
-  const data = payload.data || {};
-  
-  // Build target URL - Mobile compatible
-  const baseUrl = 'https://chat-app-nextjs-gray-eta.vercel.app';
-  let targetUrl = `${baseUrl}/`;
-  
-  if (data.chatId) {
-    targetUrl = `${baseUrl}/chat/${data.chatId}`;
-  }
+  console.log('📨 Received background message:', payload);
 
-  console.log('📍 [SW] Target URL for mobile:', targetUrl);
-
+  const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
-    body: notificationBody,
-    image: '/icon-512.png', // ✅ Added for mobile
-    tag: `chat-${data.chatId || 'general'}`,
-    renotify: true,
-    requireInteraction: true,
-    vibrate: [200, 100, 200], // ✅ Vibration for mobile
-    data: {
-      ...data,
-      targetUrl: targetUrl,
-      click_action: targetUrl // ✅ Important for mobile
-    },
+    body: payload.notification?.body,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    data: payload.data,
     actions: [
       {
-        action: 'open-chat',
-        title: '💬 Open Chat'
+        action: 'open',
+        title: 'Open Chat',
       },
       {
         action: 'dismiss',
-        title: '❌ Dismiss'
+        title: 'Dismiss',
       }
     ]
   };
 
-  // Show notification
-  event.waitUntil(
-    self.registration.showNotification(notificationTitle, notificationOptions)
-  );
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// ✅ FIXED: Mobile-compatible notification click
+// Handle notification click
 self.addEventListener('notificationclick', (event) => {
-  console.log('🔔 [SW] Notification clicked on:', self.clientInformation ? 'Desktop' : 'Mobile');
+  console.log('🔔 Notification click received:', event);
+  
   event.notification.close();
 
-  const notificationData = event.notification.data || {};
-  let targetUrl = notificationData.targetUrl || notificationData.click_action || 'https://chat-app-nextjs-gray-eta.vercel.app/';
-
-  console.log('📍 [SW] Mobile navigating to:', targetUrl);
+  const chatId = event.notification.data?.chatId;
+  const url = chatId 
+    ? `https://chat-app-nextjs-gray-eta.vercel.app/chat/${chatId}`
+    : 'https://chat-app-nextjs-gray-eta.vercel.app/chat';
 
   event.waitUntil(
-    clients.matchAll({ 
-      type: 'window',
-      includeUncontrolled: true 
-    }).then((clientList) => {
-      // Focus existing tab or open new one
+    clients.matchAll({ type: 'window' }).then((clientList) => {
+      // Check if chat window is already open
       for (const client of clientList) {
-        if (client.url.includes('chat-app-nextjs') && 'focus' in client) {
-          client.navigate(targetUrl);
+        if (client.url.includes('/chat') && 'focus' in client) {
           return client.focus();
         }
       }
-      
-      // Open new window - mobile compatible
+      // Open new window if none exists
       if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
+        return clients.openWindow(url);
       }
     })
   );

@@ -7,7 +7,6 @@ import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
 
-import { useNotifications } from '@/hooks/useNotifications';
 
 interface ChatWindowProps {
   chatId: string;
@@ -16,21 +15,20 @@ interface ChatWindowProps {
 }
 
 export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatWindowProps) {
-  const { showBrowserNotification } = useNotifications();
+  
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
-  const { sendPushNotification } = useNotifications();
+ 
   const previousMessagesRef = useRef<Message[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const participantName = otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User';
 
-  // 🔥 IMPROVED: Realtime messages with better push notification logic
-  // In ChatWindow.tsx - replace the useEffect
-// Replace the problematic useEffect in ChatWindow.tsx
+
+// Replace the problematic useEffect with this:
 useEffect(() => {
   if (!chatId || !user) return;
 
@@ -46,7 +44,7 @@ useEffect(() => {
       
       console.log(`🆕 [CHAT] ${newMessages.length} new messages`);
 
-      newMessages.forEach((message) => {
+      newMessages.forEach(async (message) => {
         // Send notification ONLY for messages from other users AND when chat is not active
         if (message.senderId !== user.uid && otherUser) {
           const isChatActive = isActive && document.hasFocus();
@@ -60,19 +58,13 @@ useEffect(() => {
           if (!isChatActive) {
             console.log('🚀 [CHAT] Sending push notification...');
             
-            // Send push notification
-            sendPushNotification(
-              otherUser.uid,
-              `💬 ${participantName}`,
-              message.text.length > 100 ? message.text.substring(0, 100) + '...' : message.text,
-              {
-                chatId: chatId,
-                senderId: message.senderId,
-                messageId: message.id,
-                type: 'new_message'
-              }
-            ).then(success => {
-              console.log(success ? '✅ [CHAT] Push sent' : '❌ [CHAT] Push failed');
+            // Send push notification for new message
+            await NotificationService.sendNewMessageNotification({
+              recipientId: user.uid,
+              senderName: participantName,
+              messageText: message.text,
+              chatId: chatId,
+              senderId: message.senderId,
             });
           }
         }
@@ -103,7 +95,7 @@ useEffect(() => {
     setHasMarkedInitialRead(false);
     previousMessagesRef.current = [];
   };
-}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName, sendPushNotification]);
+}, [chatId, user, otherUser, hasMarkedInitialRead, isActive, participantName]);
   // ✉️ Improved Send message function
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +111,6 @@ useEffect(() => {
         read: false,
         type: 'text',
       });
-      sendPushNotification
       setNewMessage('');
       
       // Clear input after successful send

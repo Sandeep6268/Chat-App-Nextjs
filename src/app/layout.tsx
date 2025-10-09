@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
-import NotificationPermission from '@/components/NotificationPermission';
+import NotificationProvider from '@/components/providers/NotificationProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -21,8 +21,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* ✅ Add manifest for better push notification support */}
-        <link rel="manifest" href="/manifest.json" />
         
         {/* ✅ Add meta tags for PWA */}
         <meta name="theme-color" content="#10B981" />
@@ -30,13 +28,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Chat App" />
         
-        {/* ✅ Icons for push notifications */}
-        {/* <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/icon-192.png" /> */}
+        
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          <NotificationPermission />
+          <NotificationProvider>
+
           {children}
           <Toaster 
             position="top-right"
@@ -59,7 +56,8 @@ export default function RootLayout({
                 },
               },
             }}
-          />
+            />
+            </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

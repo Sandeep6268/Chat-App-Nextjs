@@ -6,7 +6,10 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // ✅ Important for FCM service worker
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+  // Add this for PWA support
   async headers() {
     return [
       {
@@ -17,17 +20,13 @@ const nextConfig = {
             value: '/'
           },
           {
-            key: 'Cache-Control',
-            value: 'public, max-age=0, must-revalidate'
+            key: 'Content-Type',
+            value: 'application/javascript'
           }
-        ],
-      },
+        ]
+      }
     ];
-  },
-  // ✅ For better performance
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
+  }
 }
 
 module.exports = nextConfig

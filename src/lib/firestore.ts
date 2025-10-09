@@ -301,7 +301,6 @@ export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) 
 };
 
 // Message operations - SIMPLIFIED FOR ONE-TO-ONE
-// In your firestore.ts - UPDATED sendMessage function
 export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 'timestamp' | 'status'>) => {
   try {
     const messagesRef = messagesCollection(chatId);
@@ -332,8 +331,6 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
       updatedAt: serverTimestamp(),
     });
 
-    // ✅ FIXED: ALWAYS send notification (let sidebar handle unread logic)
-    await sendMessageNotification(chatId, message.senderId, message.text, chatData);
     
     return messageRef;
   } catch (error) {
@@ -342,103 +339,7 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
   }
 };
 
-// ✅ UPDATED: Enhanced notification function with proper data
-const sendMessageNotification = async (
-  chatId: string, 
-  senderId: string, 
-  messageText: string, 
-  chatData: Chat
-) => {
-  try {
-    console.log('🔔 [NOTIFICATION] Sending message notification...');
-    
-    // Find the receiver (other participant)
-    const participants = chatData.participants || [];
-    const receiverId = participants.find(pid => pid !== senderId);
-    
-    if (!receiverId) {
-      console.log('❌ [NOTIFICATION] No receiver found');
-      return;
-    }
 
-    // Get sender info for notification
-    const senderDoc = await getDoc(doc(firestore, 'users', senderId));
-    if (!senderDoc.exists()) {
-      console.log('❌ [NOTIFICATION] Sender not found');
-      return;
-    }
-
-    const senderData = senderDoc.data();
-    const senderName = senderData.displayName || senderData.email?.split('@')[0] || 'Someone';
-
-    // Get receiver info to check notification preferences
-    const receiverDoc = await getDoc(doc(firestore, 'users', receiverId));
-    if (!receiverDoc.exists()) {
-      console.log('❌ [NOTIFICATION] Receiver not found');
-      return;
-    }
-
-    const receiverData = receiverDoc.data();
-    
-    // Check if receiver has notifications enabled
-    if (receiverData.notificationEnabled === false) {
-      console.log('🔕 [NOTIFICATION] Notifications disabled for receiver');
-      return;
-    }
-
-    // ✅ IMPORTANT: Prepare proper notification data for service worker
-    const notificationData = {
-      chatId: chatId,
-      senderId: senderId,
-      type: 'new_message',
-      timestamp: new Date().toISOString(),
-      // Add any additional data needed
-      click_action: `/chat/${chatId}` // This helps some browsers
-    };
-
-    // Send push notification using your API
-    const response = await fetch('/api/send-notification', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token: receiverData.fcmTokens?.[0],
-        title: `💬 ${senderName}`,
-        body: messageText.length > 100 ? messageText.substring(0, 100) + '...' : messageText,
-        data: notificationData, // This goes to service worker
-        // Also include in notification for some platforms
-        click_action: `/chat/${chatId}`
-      }),
-    });
-
-    const result = await response.json();
-    
-    if (response.ok && result.success) {
-      console.log(`✅ [NOTIFICATION] Push notification sent to ${receiverData.displayName || 'receiver'}`);
-    } else {
-      console.log(`❌ [NOTIFICATION] Failed to send push: ${result.error}`);
-      
-      // Handle expired tokens
-      if (result.code === 'messaging/registration-token-not-registered' || response.status === 410) {
-        console.log('🔄 [NOTIFICATION] Removing expired token...');
-        
-        const updatedTokens = (receiverData.fcmTokens || []).filter((token: string) => 
-          token !== receiverData.fcmTokens[0]
-        );
-        
-        await updateDoc(doc(firestore, 'users', receiverId), {
-          fcmTokens: updatedTokens
-        });
-        
-        console.log('🗑️ [NOTIFICATION] Expired token removed');
-      }
-    }
-
-  } catch (error) {
-    console.error('❌ [NOTIFICATION] Error sending message notification:', error);
-  }
-};
 export const getMessages = (chatId: string, callback: (messages: Message[]) => void) => {
   const q = query(
     messagesCollection(chatId),
