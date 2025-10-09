@@ -10,6 +10,7 @@ import { ChatNotificationService } from '@/lib/chat-notification-service';
 import toast from 'react-hot-toast';
 import { BrowserNotificationService } from '@/lib/browser-notifications';
 import FCMDebug from '@/lib/fcm-debug';
+import FCMTestButton from '../FCMTestButton';
 
 interface ChatWindowProps {
   chatId: string;
@@ -218,6 +219,7 @@ useEffect(() => {
           </div>
         </div>
       </div>
+      <FCMTestButton />
       {/* Messages Container */}
       <div className="flex-1 overflow-hidden bg-gradient-to-b from-gray-50 to-white" ref={chatContainerRef}>
         <ScrollToBottom 

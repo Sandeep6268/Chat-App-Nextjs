@@ -1,96 +1,178 @@
-// lib/fcm-service.ts - SIMPLE DEBUG VERSION
+// lib/fcm-service.ts - COMPLETE FCM SETUP
 import { messaging } from '@/lib/firebase';
-import { getToken, onMessage } from 'firebase/messaging';
+import { getToken, onMessage, isSupported } from 'firebase/messaging';
 import { doc, setDoc, getFirestore } from 'firebase/firestore';
-import FCMDebug from './fcm-debug';
 
 export class FCMService {
   private static vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
 
+  // Request notification permission and get FCM token
   static async requestPermission(userId: string): Promise<string | null> {
     try {
-      FCMDebug.log('Requesting permission for user:', userId);
+      console.log('🚀 [FCM] Starting FCM setup for user:', userId);
       
       if (!messaging) {
-        FCMDebug.error('Messaging not available');
+        console.error('❌ [FCM] Firebase messaging not initialized');
         return null;
       }
 
-      // Request permission
-      const permission = await Notification.requestPermission();
-      FCMDebug.log('Permission result:', permission);
+      // Check current permission
+      console.log('🔔 [FCM] Checking notification permission...');
+      const currentPermission = Notification.permission;
+      console.log('📋 [FCM] Current permission:', currentPermission);
 
-      if (permission !== 'granted') {
-        FCMDebug.error('Permission not granted');
+      if (currentPermission === 'denied') {
+        console.error('❌ [FCM] Notifications are blocked by user');
         return null;
       }
 
+      // Request permission if not already granted
+      if (currentPermission === 'default') {
+        console.log('🔄 [FCM] Requesting notification permission...');
+        const permission = await Notification.requestPermission();
+        console.log('✅ [FCM] Permission result:', permission);
+
+        if (permission !== 'granted') {
+          console.error('❌ [FCM] User denied notification permission');
+          return null;
+        }
+      }
+
+      console.log('🔑 [FCM] Getting FCM token...');
+      console.log('🔑 [FCM] Using VAPID Key:', this.vapidKey ? 'Present' : 'Missing');
+      
       // Get FCM token
-      const token = await getToken(messaging, { vapidKey: this.vapidKey });
+      const token = await getToken(messaging, {
+        vapidKey: this.vapidKey,
+      });
 
       if (token) {
-        FCMDebug.success('Token received', { 
-          userId, 
-          tokenPreview: token.substring(0, 20) + '...' 
-        });
+        console.log('✅ [FCM] Token received successfully');
+        console.log('🔑 [FCM] Token preview:', token.substring(0, 20) + '...');
         
-        // Save token
+        // Save token to Firestore
         await this.saveTokenToFirestore(userId, token);
-        
-        // Trigger event for debugging
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('fcm-token', { detail: { userId, token } }));
-        }
+        console.log('💾 [FCM] Token saved to Firestore');
         
         return token;
       } else {
-        FCMDebug.error('No token received');
+        console.error('❌ [FCM] No token received - check VAPID key and Firebase configuration');
         return null;
       }
 
-    } catch (error) {
-      FCMDebug.error('Error getting token', error);
+    } catch (error: any) {
+      console.error('💥 [FCM] Error getting token:', error);
+      console.error('🔧 [FCM] Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
       return null;
     }
   }
 
-  // Listen for messages - SIMPLE VERSION
-  static onMessage(callback: (payload: any) => void) {
-    if (!messaging) {
-      FCMDebug.error('Messaging not available for onMessage');
-      return () => {};
-    }
-
-    FCMDebug.log('Setting up message listener');
-    
-    return onMessage(messaging, (payload) => {
-      FCMDebug.log('📨 NEW MESSAGE RECEIVED:', {
-        title: payload.notification?.title,
-        body: payload.notification?.body,
-        data: payload.data
-      });
-
-      // Trigger event for debugging
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('fcm-message', { detail: payload }));
-      }
-
-      callback(payload);
-    });
-  }
-
+  // Save FCM token to Firestore
   private static async saveTokenToFirestore(userId: string, token: string) {
     try {
       const db = getFirestore();
       await setDoc(doc(db, 'fcm_tokens', userId), {
-        token,
-        userId,
+        token: token,
+        userId: userId,
         createdAt: new Date(),
+        platform: this.getPlatform(),
+        userAgent: navigator.userAgent,
+        lastUpdated: new Date()
       }, { merge: true });
       
-      FCMDebug.success('Token saved to Firestore', { userId });
+      console.log('💾 [FCM] Token saved for user:', userId);
     } catch (error) {
-      FCMDebug.error('Error saving token', error);
+      console.error('❌ [FCM] Error saving token to Firestore:', error);
+    }
+  }
+
+  // Listen for foreground messages
+  static onMessage(callback: (payload: any) => void) {
+    if (!messaging) {
+      console.error('❌ [FCM] Messaging not available for onMessage');
+      return () => {};
+    }
+
+    console.log('👂 [FCM] Setting up foreground message listener');
+    
+    return onMessage(messaging, (payload) => {
+      console.log('📨 [FCM] FOREGROUND MESSAGE RECEIVED:', {
+        title: payload.notification?.title,
+        body: payload.notification?.body,
+        data: payload.data,
+        from: payload.from
+      });
+
+      // Call the callback with payload
+      callback(payload);
+    });
+  }
+
+  // Listen for background messages (via service worker)
+  static setupBackgroundListener() {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        console.log('📨 [FCM] BACKGROUND MESSAGE RECEIVED:', event.data);
+      });
+    }
+  }
+
+  // Get device platform
+  private static getPlatform(): string {
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (userAgent.includes('android')) return 'android';
+    if (userAgent.includes('iphone') || userAgent.includes('ipad')) return 'ios';
+    if (userAgent.includes('windows')) return 'windows';
+    if (userAgent.includes('mac')) return 'mac';
+    return 'web';
+  }
+
+  // Check if FCM is supported
+  static async isSupported(): Promise<boolean> {
+    if (typeof window === 'undefined') {
+      console.log('❌ [FCM] Not in browser environment');
+      return false;
+    }
+    
+    try {
+      const supported = await isSupported();
+      console.log('🔧 [FCM] Supported check:', supported);
+      return supported;
+    } catch (error) {
+      console.error('❌ [FCM] Support check failed:', error);
+      return false;
+    }
+  }
+
+  // Get current token
+  static async getCurrentToken(): Promise<string | null> {
+    if (!messaging) return null;
+    
+    try {
+      const token = await getToken(messaging, { vapidKey: this.vapidKey });
+      console.log('🔑 [FCM] Current token:', token ? token.substring(0, 20) + '...' : 'No token');
+      return token;
+    } catch (error) {
+      console.error('❌ [FCM] Error getting current token:', error);
+      return null;
+    }
+  }
+
+  // Delete token (logout)
+  static async deleteToken(userId: string): Promise<void> {
+    try {
+      const db = getFirestore();
+      await setDoc(doc(db, 'fcm_tokens', userId), {
+        deleted: true,
+        deletedAt: new Date()
+      }, { merge: true });
+      console.log('🗑️ [FCM] Token marked as deleted for user:', userId);
+    } catch (error) {
+      console.error('❌ [FCM] Error deleting token:', error);
     }
   }
 }
