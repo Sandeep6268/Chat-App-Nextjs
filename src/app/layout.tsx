@@ -56,7 +56,7 @@ export default function RootLayout({
         <link rel="shortcut icon" href="/favicon.ico" />
       </head>
       <body className={inter.className}>
-        <OneSignalInitializer />
+        {/* <OneSignalInitializer /> */}
         <AuthProvider>
           {children}
           <Toaster 
