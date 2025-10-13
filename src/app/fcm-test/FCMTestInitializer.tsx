@@ -12,7 +12,7 @@ export default function FCMTestInitializer() {
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
           const currentToken = await getToken(messaging, {
-            vapidKey: "BNqRANDOMVAPIDKEY_HERE", // tumhara VAPID key
+            vapidKey: "BGVsvUWSIEz1COSECmWhy0IkVmiNWC2Zfq5D4Cx-cGlWImCum46BL7Ce8KESD5wLQFagtd-UlHD72_RS7PFk2ZY", // tumhara VAPID key
           });
           setToken(currentToken);
           console.log("✅ FCM Token:", currentToken);
