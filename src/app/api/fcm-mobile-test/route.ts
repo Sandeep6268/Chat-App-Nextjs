@@ -3,12 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('📥 FCM API called');
-    
-    const body = await request.json();
-    const { token, title, body: messageBody, data } = body;
+    const { token, title, body, data } = await request.json();
 
-    // Basic validation
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'Token is required' },
@@ -17,70 +13,57 @@ export async function POST(request: NextRequest) {
     }
 
     if (!process.env.FIREBASE_SERVER_KEY) {
-      console.error('❌ FIREBASE_SERVER_KEY missing');
       return NextResponse.json(
         { success: false, error: 'Server configuration error' },
         { status: 500 }
       );
     }
 
-    console.log('🔑 Using server key:', process.env.FIREBASE_SERVER_KEY.substring(0, 10) + '...');
-
-    // Simple FCM message
-    const fcmMessage = {
+    const message = {
       to: token,
       notification: {
-        title: title || '📱 Test Notification',
-        body: messageBody || 'Test message from FCM',
+        title: title || '📱 Mobile Test Notification',
+        body: body || 'This is a test from FCM Mobile Tester',
         icon: '/icon.png'
       },
-      data: data || {},
-      priority: 'high'
+      data: {
+        ...data,
+        type: 'mobile-test',
+        url: 'https://chat-app-nextjs-gray-eta.vercel.app' // Hardcode karo
+      },
+      content_available: true,
+      priority: 'high' as const
     };
 
-    console.log('📤 Sending to FCM:', fcmMessage);
-
-    // Send to FCM
     const fcmResponse = await fetch('https://fcm.googleapis.com/fcm/send', {
       method: 'POST',
       headers: {
         'Authorization': `key=${process.env.FIREBASE_SERVER_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(fcmMessage),
+      body: JSON.stringify(message),
     });
 
     const fcmResult = await fcmResponse.json();
-    console.log('📩 FCM Response:', fcmResult);
 
-    // Return success response
-    return NextResponse.json({
-      success: true,
-      message: 'Notification sent successfully',
-      fcmResponse: fcmResult
-    });
+    if (fcmResult.success === 1) {
+      return NextResponse.json({
+        success: true,
+        message: 'Notification sent successfully',
+        messageId: fcmResult.results?.[0]?.message_id
+      });
+    } else {
+      const errorMessage = fcmResult.results?.[0]?.error || 'Unknown FCM error';
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 400 }
+      );
+    }
 
-  } catch (error) {
-    console.error('❌ FCM API Error:', error);
-    
+  } catch (error: any) {
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { success: false, error: error.message },
       { status: 500 }
     );
   }
-}
-
-// Add this to handle preflight requests
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  });
 }

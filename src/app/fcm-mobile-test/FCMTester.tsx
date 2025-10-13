@@ -84,9 +84,10 @@ export default function FCMTester() {
   };
 
   // In FCMTester.tsx - sendTestNotification function को replace करें
+// FCMTester.tsx mein sendTestNotification function
 const sendTestNotification = async (): Promise<void> => {
   if (!token) {
-    addTestResult('error', '❌ No FCM token available. Please generate token first.');
+    addTestResult('error', '❌ No FCM token available');
     return;
   }
 
@@ -94,71 +95,32 @@ const sendTestNotification = async (): Promise<void> => {
     setIsLoading(true);
     addTestResult('info', 'Sending test notification...');
 
-    const payload = {
-      token: token,
-      title: customTitle,
-      body: customBody,
-      data: {
-        testType: 'mobile-test',
-        timestamp: new Date().toISOString(),
-        url: window.location.href
-      }
-    };
-
-    console.log('📤 Sending payload:', payload);
-
     const response = await fetch('/api/fcm-mobile-test', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        token: token,
+        title: customTitle,
+        body: customBody,
+        data: {
+          testType: 'mobile-test',
+          timestamp: new Date().toISOString()
+        }
+      }),
     });
 
-    console.log('📩 Response status:', response.status);
-    console.log('📩 Response ok:', response.ok);
-
-    // Check if response is OK before parsing JSON
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Server error:', errorText);
-      addTestResult('error', `❌ Server error: ${response.status} ${errorText}`);
-      return;
-    }
-
-    // Try to parse JSON
-    let result;
-    try {
-      const text = await response.text();
-      console.log('📩 Raw response:', text);
-      
-      if (!text) {
-        throw new Error('Empty response from server');
-      }
-      
-      result = JSON.parse(text);
-    } catch (parseError) {
-      console.error('❌ JSON parse error:', parseError);
-      addTestResult('error', '❌ Invalid response from server');
-      return;
-    }
-
-    console.log('📩 Parsed result:', result);
-
+    const result = await response.json();
+    
     if (result.success) {
-      addTestResult('success', '✅ Test notification sent successfully!');
-      addTestResult('info', '💡 Tip: Minimize browser or open another tab to see push notification');
-      
-      // Auto-test: Check if notification appears
-      setTimeout(() => {
-        addTestResult('info', '🔔 Check your notifications! Did you receive the push notification?');
-      }, 2000);
+      addTestResult('success', '✅ Notification sent successfully!');
     } else {
-      addTestResult('error', `❌ Failed to send: ${result.error}`);
+      addTestResult('error', `❌ Failed: ${result.error}`);
     }
-  } catch (error) {
-    console.error('❌ Network error:', error);
-    addTestResult('error', `❌ Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+  } catch (error: any) {
+    addTestResult('error', `❌ Network error: ${error.message}`);
   } finally {
     setIsLoading(false);
   }
