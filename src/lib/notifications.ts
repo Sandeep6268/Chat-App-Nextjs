@@ -1,5 +1,5 @@
 // lib/notifications.ts
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { firestore } from './firebase';
 
 export interface NotificationPayload {
@@ -31,9 +31,12 @@ export const sendPushNotification = async (userId: string, payload: Notification
       return;
     }
 
-    console.log('📨 Sending FCM notification to token:', fcmToken.substring(0, 20) + '...');
+    console.log('📨 Sending FCM request for token:', fcmToken.substring(0, 20) + '...');
 
-    // Send notification via FCM
+    // Send notification via FCM with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
     const response = await fetch('/api/send-notification', {
       method: 'POST',
       headers: {
@@ -49,10 +52,13 @@ export const sendPushNotification = async (userId: string, payload: Notification
           chatId: payload.chatId,
           senderName: payload.senderName,
           message: payload.message,
-          click_action: `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/chat/${payload.chatId}`
+          click_action: `${process.env.NEXT_PUBLIC_APP_URL}/chat/${payload.chatId}`
         }
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -60,9 +66,22 @@ export const sendPushNotification = async (userId: string, payload: Notification
     }
 
     const result = await response.json();
-    console.log('✅ Push notification sent successfully to:', userId);
     
-  } catch (error) {
+    if (!result.success) {
+      throw new Error(result.error || 'Unknown error from notification API');
+    }
+
+    console.log('✅ Push notification sent successfully to:', userId);
+  } catch (error: any) {
     console.error('❌ Error sending push notification:', error);
+    
+    // Log specific error details
+    if (error.name === 'AbortError') {
+      console.error('⏰ Notification request timed out');
+    } else if (error.message.includes('404')) {
+      console.error('🔍 Notification endpoint not found');
+    } else if (error.message.includes('500')) {
+      console.error('⚡ Server error when sending notification');
+    }
   }
 };

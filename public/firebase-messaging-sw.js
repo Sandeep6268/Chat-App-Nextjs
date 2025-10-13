@@ -14,9 +14,9 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background message handler
+// Background message handler - ONLY THIS REMAINS
 messaging.onBackgroundMessage((payload) => {
-  console.log('📱 Received background message in SW:', payload);
+  console.log('📱 Received background push notification:', payload);
 
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
@@ -26,6 +26,12 @@ messaging.onBackgroundMessage((payload) => {
     data: payload.data || {},
     tag: payload.data?.chatId || 'chat',
     requireInteraction: true,
+    actions: [
+      {
+        action: 'open',
+        title: 'Open Chat'
+      }
+    ]
   };
 
   // Show notification
@@ -40,13 +46,13 @@ self.addEventListener('notificationclick', (event) => {
 
   const chatId = event.notification.data?.chatId;
   const baseUrl = self.location.origin;
-  const urlToOpen = chatId ? `${baseUrl}/chat/${chatId}` : baseUrl;
+  const urlToOpen = chatId ? `${baseUrl}/chat/${chatId}` : `${baseUrl}/chat`;
   
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((windowClients) => {
       // Check if chat window is already open
       for (const client of windowClients) {
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
+        if (client.url.includes('/chat') && 'focus' in client) {
           return client.focus();
         }
       }

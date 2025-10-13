@@ -3,7 +3,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { getFCMToken, onForegroundMessage } from '@/lib/firebase';
+import { getFCMToken } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 
@@ -59,25 +59,7 @@ export default function FCMInitializer() {
     initializeFCM();
   }, [user?.uid]);
 
-  useEffect(() => {
-    // Handle foreground messages - only setup once
-    const unsubscribe = onForegroundMessage((payload) => {
-      console.log('📱 Received foreground message:', payload);
-      
-      // Show notification even in foreground
-      if (payload.notification && 'Notification' in window && Notification.permission === 'granted') {
-        const { title, body } = payload.notification;
-        
-        new Notification(title || 'New Message', {
-          body: body || 'You have a new message',
-          icon: '/favicon.ico',
-          tag: payload.data?.chatId,
-        });
-      }
-    });
 
-    return () => unsubscribe();
-  }, []);
 
   return null;
 }

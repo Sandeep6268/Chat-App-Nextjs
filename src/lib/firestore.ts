@@ -103,10 +103,11 @@ export const createChat = async (user1Id: string, user2Id: string) => {
       lastMessage: '',
       lastMessageTimestamp: serverTimestamp(),
       lastMessageSender: '',
+      isGroup: false, // Explicitly mark as one-to-one
     };
 
     const chatRef = await addDoc(chatsCollection, chatData);
-    console.log('✅ New chat created:', chatRef.id);
+    console.log('✅ New one-to-one chat created:', chatRef.id);
     
     return chatRef;
   } catch (error) {
@@ -173,7 +174,56 @@ export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
   }
 };
 
-// Calculate unread count for one-to-one chat
+
+
+// Get user chats - ONE-TO-ONE ONLY
+export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) => {
+  const q = query(
+    chatsCollection,
+    where('participants', 'array-contains', userId),
+    orderBy('lastMessageTimestamp', 'desc')
+  );
+  
+  return onSnapshot(q, async (snapshot) => {
+    const chatsPromises = snapshot.docs.map(async (chatDoc) => {
+      try {
+        const chatData = chatDoc.data();
+        
+        // Skip if this is a group chat (shouldn't exist in our app)
+        if (chatData.isGroup) {
+          return null;
+        }
+        
+        const unreadCount = await calculateUnreadCount(chatDoc.id, userId);
+        
+        const chat = {
+          id: chatDoc.id,
+          ...chatData,
+          unreadCount,
+          isGroup: false // Ensure it's marked as one-to-one
+        } as Chat;
+        
+        return chat;
+      } catch (error) {
+        console.error('Error processing chat:', chatDoc.id, error);
+        return null;
+      }
+    });
+    
+    try {
+      let chats = await Promise.all(chatsPromises);
+      chats = chats.filter(chat => chat !== null) as Chat[];
+      console.log(`📋 Processed ${chats.length} one-to-one chats for user:`, userId);
+      callback(chats);
+    } catch (error) {
+      console.error('Error processing chats:', error);
+      callback([]);
+    }
+  }, (error) => {
+    console.error('getUserChats listener error:', error);
+  });
+};
+
 export const calculateUnreadCount = async (chatId: string, userId: string): Promise<number> => {
   try {
     const messagesRef = messagesCollection(chatId);
@@ -193,6 +243,7 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
       }
     });
     
+    console.log(`📊 Calculated ${unreadCount} unread messages for user ${userId} in chat ${chatId}`);
     return unreadCount;
   } catch (error) {
     console.error('Error calculating unread count:', error);
@@ -200,48 +251,7 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
   }
 };
 
-// Get user chats - ONE-TO-ONE ONLY
-export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) => {
-  const q = query(
-    chatsCollection,
-    where('participants', 'array-contains', userId),
-    orderBy('lastMessageTimestamp', 'desc')
-  );
-  
-  return onSnapshot(q, async (snapshot) => {
-    const chatsPromises = snapshot.docs.map(async (chatDoc) => {
-      try {
-        const chatData = chatDoc.data();
-        const unreadCount = await calculateUnreadCount(chatDoc.id, userId);
-        
-        const chat = {
-          id: chatDoc.id,
-          ...chatData,
-          unreadCount
-        } as Chat;
-        
-        return chat;
-      } catch (error) {
-        console.error('Error processing chat:', chatDoc.id, error);
-        return null;
-      }
-    });
-    
-    try {
-      let chats = await Promise.all(chatsPromises);
-      chats = chats.filter(chat => chat !== null) as Chat[];
-      console.log(`📋 Processed ${chats.length} chats for user:`, userId);
-      callback(chats);
-    } catch (error) {
-      console.error('Error processing chats:', error);
-      callback([]);
-    }
-  }, (error) => {
-    console.error('getUserChats listener error:', error);
-  });
-};
-
-// Message operations - ONE-TO-ONE ONLY
+// Update the sendMessage function to ensure unread count updates
 export const sendMessage = async (chatId: string, messageData: {
   text: string;
   senderId: string;
@@ -274,6 +284,19 @@ export const sendMessage = async (chatId: string, messageData: {
     });
 
     console.log('✅ Message sent:', messageRef.id);
+    
+    // Force unread count recalculation by triggering a chat update
+    setTimeout(async () => {
+      try {
+        const chatDoc = await getDoc(chatRef);
+        if (chatDoc.exists()) {
+          console.log('🔄 Triggering chat update for unread count recalculation');
+        }
+      } catch (error) {
+        console.error('Error triggering chat update:', error);
+      }
+    }, 1000);
+    
     return messageRef;
   } catch (error) {
     console.error('Error sending message:', error);

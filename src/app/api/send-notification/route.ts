@@ -30,9 +30,10 @@ export async function POST(request: NextRequest) {
   try {
     const { token, notification, data } = await request.json();
 
-    console.log('📤 Sending notification to:', token?.substring(0, 20) + '...');
+    console.log('📤 Sending notification to token:', token?.substring(0, 20) + '...');
 
     if (!token) {
+      console.log('❌ No FCM token provided');
       return NextResponse.json(
         { error: 'FCM token is required' },
         { status: 400 }
@@ -40,13 +41,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!admin) {
+      console.log('❌ Firebase Admin not available');
       return NextResponse.json(
         { error: 'Firebase Admin not available' },
         { status: 500 }
       );
     }
 
-    // Simple message payload
     const message = {
       token: token,
       notification: {
@@ -57,21 +58,33 @@ export async function POST(request: NextRequest) {
         chatId: data?.chatId || '',
         senderName: data?.senderName || 'Unknown',
         message: data?.message || '',
-        click_action: data?.click_action || process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com'
+        click_action: `${process.env.NEXT_PUBLIC_APP_URL}/chat/${data?.chatId}`
       },
       webpush: {
         fcm_options: {
-          link: data?.click_action || process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com'
+          link: `${process.env.NEXT_PUBLIC_APP_URL}/chat/${data?.chatId}`
+        },
+        notification: {
+          icon: '/favicon.ico',
+          badge: '/favicon.ico'
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1
+          }
         }
       }
     };
 
-    console.log('📨 Sending FCM message to:', token.substring(0, 20) + '...');
+    console.log('📨 Sending FCM message...');
 
-    // Send message using Firebase Admin
+    // Send message using Firebase Admin with better error handling
     const response = await admin.messaging().send(message);
     
-    console.log('✅ FCM notification sent successfully');
+    console.log('✅ FCM notification sent successfully, message ID:', response);
 
     return NextResponse.json({ 
       success: true, 
@@ -81,10 +94,20 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ Error sending notification:', error);
     
+    // More specific error logging
+    if (error.code === 'messaging/registration-token-not-registered') {
+      console.error('🔴 FCM token no longer valid - user needs to refresh token');
+    } else if (error.code === 'messaging/invalid-argument') {
+      console.error('🔴 Invalid FCM token format');
+    } else if (error.code === 'messaging/internal-error') {
+      console.error('🔴 Internal FCM server error');
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to send notification',
-        details: error.message
+        details: error.message,
+        code: error.code
       },
       { status: 500 }
     );

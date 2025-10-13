@@ -3,7 +3,7 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
+import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -89,18 +89,7 @@ const getFCMToken = async (): Promise<string | null> => {
   }
 };
 
-// Listen for foreground messages
-const onForegroundMessage = (callback: (payload: any) => void) => {
-  if (!messaging) {
-    console.log('❌ Messaging not available for foreground messages');
-    return () => {};
-  }
 
-  return onMessage(messaging, (payload) => {
-    console.log('📱 Received foreground message:', payload);
-    callback(payload);
-  });
-};
 
 export { 
   auth, 
@@ -108,7 +97,6 @@ export {
   storage, 
   messaging, 
   getFCMToken, 
-  onForegroundMessage,
   initializeMessaging 
 };
 export default app;

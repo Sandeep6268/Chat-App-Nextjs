@@ -4,11 +4,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePathname, useRouter } from 'next/navigation';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
-import { getUserChats, markAllMessagesAsRead, getOtherUserFromChat, getUserById } from '@/lib/firestore';
-import { sendPushNotification } from '@/lib/notifications';
+import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
+import toast from 'react-hot-toast';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -21,16 +21,18 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [existingChats, setExistingChats] = useState<Chat[]>([]);
-  const [otherUsersInfo, setOtherUsersInfo] = useState<{[key: string]: User}>({});
   const [loading, setLoading] = useState(true);
   const [totalUnread, setTotalUnread] = useState<number>(0);
+  const [usersWithoutChats, setUsersWithoutChats] = useState<User[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   const previousChatsRef = useRef<Chat[]>([]);
+  const previousTotalUnreadRef = useRef<number>(0);
+  const notificationCooldownRef = useRef<{[key: string]: number}>({});
+
   const currentChatId = pathname?.split('/chat/')[1];
 
-  // Fetch available users and setup chats listener
   useEffect(() => {
     if (!user) return;
 
@@ -40,57 +42,130 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
       try {
         setLoading(true);
         
-        // Fetch all other users
+        // Fetch users
         const usersRef = collection(firestore, 'users');
         const usersQuery = query(usersRef, where('uid', '!=', user.uid));
         const usersSnapshot = await getDocs(usersQuery);
         
         const allUsers = usersSnapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data()
+          uid: doc.data().uid || doc.id,
+          email: doc.data().email || null,
+          displayName: doc.data().displayName || null,
+          photoURL: doc.data().photoURL || null,
+          phoneNumber: doc.data().phoneNumber || null,
+          createdAt: doc.data().createdAt,
+          lastSeen: doc.data().lastSeen,
+          isOnline: doc.data().isOnline || false,
+          fcmToken: doc.data().fcmToken || null,
         } as User));
         
         setAvailableUsers(allUsers);
-        console.log('👥 Found other users:', allUsers.length);
         
-        // Setup real-time chats listener
-        unsubscribeChats = getUserChats(user.uid, async (chats) => {
-          console.log('💬 Chats updated:', chats.length);
+        // Real-time chats listener
+        unsubscribeChats = getUserChats(user.uid, (chats) => {
+          const userChats = chats.filter(chat => 
+            chat.participants && chat.participants.includes(user.uid)
+          );
           
           // Calculate total unread
-          const previousTotal = previousChatsRef.current.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-          const currentTotal = chats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+          const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+          const previousTotal = previousTotalUnreadRef.current;
           
-          // Check for new unread messages and send notifications
-          if (currentTotal > previousTotal && previousTotal >= 0) {
-            for (const chat of chats) {
+          console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
+          
+          // 🚨 FIXED: Improved notification logic
+          if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
+            const increasedBy = totalUnreadMessages - previousTotal;
+            console.log(`🎯 Unread count increased by ${increasedBy}! Checking for notifications...`);
+            
+            // Find ALL chats with new unread messages
+            userChats.forEach(async (chat) => {
               const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
               const previousUnread = previousChat?.unreadCount || 0;
               const currentUnread = chat.unreadCount || 0;
               
+              console.log(`🔍 Chat ${chat.id}: ${previousUnread} → ${currentUnread} unread`);
+              
+              // Send notification for EVERY new unread message
               if (currentUnread > previousUnread) {
-                await handleNewUnreadMessages(chat, currentUnread - previousUnread);
+                const otherUserInfo = getOtherUserInfo(chat);
+                const newMessagesCount = currentUnread - previousUnread;
+                
+                console.log(`🎯 Chat ${chat.id} has ${newMessagesCount} new unread messages!`);
+                
+                // Get the other user ID (the one who should receive notification)
+                const otherUserId = chat.participants?.find(pid => pid !== user.uid);
+                
+                if (otherUserId && newMessagesCount > 0) {
+                  try {
+                    // Check if user is not currently viewing this chat
+                    const isUserViewingThisChat = currentChatId === chat.id;
+                    const isWindowFocused = document.hasFocus();
+                    
+                    // Simple cooldown to prevent duplicate notifications (5 seconds)
+                    const now = Date.now();
+                    const lastNotificationTime = notificationCooldownRef.current[chat.id] || 0;
+                    const cooldownPeriod = 5000; // 5 seconds
+                    
+                    const shouldSendNotification = 
+                      (!isUserViewingThisChat || !isWindowFocused) && 
+                      (now - lastNotificationTime > cooldownPeriod);
+                    
+                    if (shouldSendNotification) {
+                      console.log(`📱 Sending push notification to ${otherUserId} for ${newMessagesCount} new message(s)`);
+                      
+                      // Update cooldown
+                      notificationCooldownRef.current[chat.id] = now;
+                      
+                      // Import and send push notification
+                      const { sendPushNotification } = await import('@/lib/notifications');
+                      
+                      const notificationPayload = {
+                        title: `New message from ${otherUserInfo.name}`,
+                        body: chat.lastMessage || 'You have a new message',
+                        chatId: chat.id,
+                        senderName: otherUserInfo.name,
+                        message: chat.lastMessage || 'New message'
+                      };
+                      
+                      await sendPushNotification(otherUserId, notificationPayload);
+                      
+                      console.log(`✅ Push notification sent to ${otherUserId}`);
+                    } else {
+                      console.log(`⏳ Skipping notification - cooldown active or user is viewing chat`);
+                    }
+                  } catch (error) {
+                    console.error('❌ Error sending push notification:', error);
+                  }
+                }
               }
-            }
+            });
           }
           
-          // Fetch other users info for display
-          const otherUsersMap: {[key: string]: User} = {};
-          for (const chat of chats) {
-            const otherUser = await getOtherUserFromChat(chat, user.uid);
-            if (otherUser) {
-              otherUsersMap[otherUser.uid] = otherUser;
-            }
-          }
+          // Update state
+          previousTotalUnreadRef.current = totalUnreadMessages;
+          previousChatsRef.current = userChats;
+          setTotalUnread(totalUnreadMessages);
+          setExistingChats(userChats);
           
-          setOtherUsersInfo(otherUsersMap);
-          previousChatsRef.current = chats;
-          setExistingChats(chats);
-          setTotalUnread(currentTotal);
+          // Calculate users without chats
+          const usersWithExistingChats = new Set<string>();
+          userChats.forEach(chat => {
+            chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
+              usersWithExistingChats.add(pid);
+            });
+          });
+          
+          const usersWithoutExistingChats = allUsers.filter(user => 
+            !usersWithExistingChats.has(user.uid)
+          );
+          
+          setUsersWithoutChats(usersWithoutExistingChats);
         });
         
       } catch (error) {
-        console.error('❌ Error in fetchData:', error);
+        console.error('Error in fetchData:', error);
       } finally {
         setLoading(false);
       }
@@ -99,88 +174,92 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     fetchData();
 
     return () => {
-      if (unsubscribeChats) unsubscribeChats();
+      if (unsubscribeChats) {
+        unsubscribeChats();
+      }
     };
-  }, [user]);
+  }, [user, currentChatId]);
 
-  // Handle new unread messages - send notifications
-  const handleNewUnreadMessages = async (chat: Chat, newMessageCount: number) => {
-    if (!user) return;
-
-    try {
-      const otherUser = await getOtherUserFromChat(chat, user.uid);
-      if (!otherUser) {
-        console.log('❌ Other user not found for notification');
-        return;
-      }
-
-      const isUserViewingThisChat = currentChatId === chat.id;
-      const isWindowFocused = document.hasFocus();
-      
-      // Only send notification if user is not viewing this chat or window is not focused
-      if (!isUserViewingThisChat || !isWindowFocused) {
-        console.log(`📱 Sending notification to ${otherUser.uid}`);
-        
-        await sendPushNotification(otherUser.uid, {
-          title: `New message from ${user.displayName || 'Someone'}`,
-          body: chat.lastMessage || 'You have a new message',
-          chatId: chat.id,
-          senderName: user.displayName || 'User',
-          message: chat.lastMessage || 'New message'
-        });
-        
-        console.log('✅ Notification sent successfully');
-      } else {
-        console.log('ℹ️ Skipping notification - user is viewing the chat');
-      }
-    } catch (error) {
-      console.error('❌ Error sending notification:', error);
-    }
-  };
-
-  // Get other user info for display
+  // Get other user's info from chat
   const getOtherUserInfo = (chat: Chat) => {
-    const otherUserId = chat.participants.find(pid => pid !== user?.uid);
-    if (!otherUserId) return { name: 'Unknown User', email: '', photoURL: null, uid: '', isOnline: false };
+    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
     
-    const otherUser = otherUsersInfo[otherUserId];
-    if (!otherUser) return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId, isOnline: false };
+    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
+    
+    if (otherParticipants.length === 0) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+    }
+    
+    const otherUserId = otherParticipants[0];
+    const otherUser = availableUsers.find(u => u.uid === otherUserId);
+    
+    if (!otherUser) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
+    }
     
     return {
       name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
       email: otherUser.email || '',
       photoURL: otherUser.photoURL,
-      uid: otherUser.uid,
-      isOnline: otherUser.isOnline || false
+      uid: otherUser.uid
     };
   };
 
-  // Create new one-to-one chat
+  // Filter chats based on search term
+  const filteredChats = existingChats.filter(chat => {
+    if (!searchTerm) return true;
+    
+    const otherUserInfo = getOtherUserInfo(chat);
+    const searchLower = searchTerm.toLowerCase();
+    
+    return (
+      otherUserInfo.name.toLowerCase().includes(searchLower) ||
+      otherUserInfo.email.toLowerCase().includes(searchLower) ||
+      chat.lastMessage?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Filter users for new chat modal based on search
+  const filteredUsers = usersWithoutChats.filter(otherUser => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (otherUser.displayName?.toLowerCase().includes(searchLower) || false) ||
+      (otherUser.email?.toLowerCase().includes(searchLower) || false)
+    );
+  });
+
+  // Function to create new chat (one-to-one only)
   const createNewChat = async (otherUserId: string) => {
     if (!user) return;
 
     try {
       setLoading(true);
+      
       const { createChat } = await import('@/lib/firestore');
       
+      // Create one-to-one chat
       const chatRef = await createChat(user.uid, otherUserId);
       
       setShowNewChatModal(false);
       setSearchTerm('');
       
-      if (onSelectChat) onSelectChat();
+      if (onSelectChat) {
+        onSelectChat();
+      }
+      
       router.push(`/chat/${chatRef.id}`);
       
-      console.log('✅ New chat created with user:', otherUserId);
     } catch (error) {
       console.error('Error creating chat:', error);
-      alert('Error creating chat. Please try again.');
+      toast.error('Error creating chat. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle chat click
+  // Chat click handler
   const handleChatClick = async (chatId: string, hasUnread: boolean) => {
     if (chatId === currentChatId) {
       if (onSelectChat) onSelectChat();
@@ -196,19 +275,10 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
     
     router.push(`/chat/${chatId}`);
-    if (onSelectChat) onSelectChat();
-  };
-
-  // Filter users who don't have existing chats with current user
-  const getUsersWithoutChats = () => {
-    const usersWithChats = new Set<string>();
-    existingChats.forEach(chat => {
-      chat.participants.forEach(pid => {
-        if (pid !== user?.uid) usersWithChats.add(pid);
-      });
-    });
     
-    return availableUsers.filter(user => !usersWithChats.has(user.uid));
+    if (onSelectChat) {
+      onSelectChat();
+    }
   };
 
   // Format last message time
@@ -234,38 +304,12 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     }
   };
 
-  // Truncate long messages
+  // Truncate long last messages
   const truncateLastMessage = (message: string | undefined, maxLength: number = 40) => {
     if (!message) return 'Start a conversation...';
     if (message.length <= maxLength) return message;
     return message.substring(0, maxLength) + '...';
   };
-
-  // Filter chats based on search
-  const filteredChats = existingChats.filter(chat => {
-    if (!searchTerm) return true;
-    
-    const otherUserInfo = getOtherUserInfo(chat);
-    const searchLower = searchTerm.toLowerCase();
-    
-    return (
-      otherUserInfo.name.toLowerCase().includes(searchLower) ||
-      otherUserInfo.email.toLowerCase().includes(searchLower) ||
-      chat.lastMessage?.toLowerCase().includes(searchLower)
-    );
-  });
-
-  // Filter users for new chat modal
-  const usersWithoutChats = getUsersWithoutChats();
-  const filteredUsers = usersWithoutChats.filter(otherUser => {
-    if (!searchTerm) return true;
-    
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      (otherUser.displayName?.toLowerCase().includes(searchLower) || false) ||
-      (otherUser.email?.toLowerCase().includes(searchLower) || false)
-    );
-  });
 
   // New Chat Modal Component
   const NewChatModal = () => {
@@ -274,7 +318,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden">
-          {/* Modal Header */}
           <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-gray-800">New Conversation</h3>
@@ -291,7 +334,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
               </button>
             </div>
             
-            {/* Search Bar */}
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -308,7 +350,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
             </div>
           </div>
 
-          {/* Modal Content */}
           <div className="flex-1 overflow-y-auto">
             {filteredUsers.length === 0 ? (
               <div className="text-center py-12">
@@ -343,18 +384,15 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                     className="w-full flex items-center p-4 rounded-xl bg-white hover:bg-blue-50 transition-all duration-200 border border-gray-200 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed group"
                   >
                     <div className="flex items-center space-x-4 flex-1">
-                      {/* User Avatar */}
                       <div className="relative">
                         <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm">
                           {otherUser.displayName?.[0]?.toUpperCase() || otherUser.email?.[0]?.toUpperCase() || 'U'}
                         </div>
-                        {/* Online Status Indicator */}
                         <div className={`absolute -bottom-1 -right-1 w-4 h-4 border-2 border-white rounded-full ${
                           otherUser.isOnline ? 'bg-green-500' : 'bg-gray-400'
                         }`} />
                       </div>
                       
-                      {/* User Info */}
                       <div className="flex-1 text-left min-w-0">
                         <p className="font-semibold text-gray-900 text-base truncate">
                           {otherUser.displayName || 'Unknown User'}
@@ -368,7 +406,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                       </div>
                     </div>
                     
-                    {/* Add Icon */}
                     <div className="text-blue-500 transform transition-transform group-hover:scale-110 p-2">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -380,7 +417,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
             )}
           </div>
 
-          {/* Modal Footer */}
           <div className="p-4 border-t border-gray-200 bg-gray-50">
             <button
               onClick={() => {
@@ -400,7 +436,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   if (loading) {
     return (
       <div className="w-80 bg-white border-r border-gray-200 h-full flex flex-col">
-        {/* Header */}
         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex justify-between items-center">
             <div>
@@ -413,7 +448,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           </div>
         </div>
         
-        {/* Loading State */}
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -447,7 +481,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                   {totalUnread > 99 ? '99+' : totalUnread}
                 </span>
               )}
-              {/* New Chat Button */}
               <button
                 onClick={() => setShowNewChatModal(true)}
                 className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
@@ -460,7 +493,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
             </div>
           </div>
 
-          {/* Search Bar */}
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
