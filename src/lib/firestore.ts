@@ -42,8 +42,6 @@ export const createUserProfile = async (user: User) => {
         createdAt: serverTimestamp(),
         lastSeen: serverTimestamp(),
         isOnline: true,
-        fcmToken: null,
-        fcmTokenUpdatedAt: null,
       });
       console.log('✅ New user profile created:', user.uid);
     } else {

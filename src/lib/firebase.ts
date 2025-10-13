@@ -3,7 +3,6 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -14,7 +13,6 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
 let app;
 try {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -24,79 +22,15 @@ try {
   throw error;
 }
 
-// Initialize Firebase services
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 
-// FCM Messaging
-let messaging: ReturnType<typeof getMessaging> | null = null;
-
-const initializeMessaging = async () => {
-  if (typeof window === 'undefined') return null;
-  
-  try {
-    const supported = await isSupported();
-    if (!supported) {
-      console.log('❌ FCM not supported in this browser');
-      return null;
-    }
-
-    messaging = getMessaging(app);
-    console.log('✅ FCM Messaging initialized');
-    return messaging;
-  } catch (error) {
-    console.log('❌ FCM initialization failed:', error);
-    return null;
-  }
-};
-
-// Initialize messaging
-initializeMessaging();
-
-// FCM Token management
-const getFCMToken = async (): Promise<string | null> => {
-  if (!messaging) {
-    console.log('❌ Messaging not available');
-    return null;
-  }
-
-  try {
-    // Request notification permission
-    const permission = await Notification.requestPermission();
-    console.log('📢 Notification permission:', permission);
-    
-    if (permission !== 'granted') {
-      console.log('❌ Notification permission denied');
-      return null;
-    }
-
-    // Get FCM token with VAPID key
-    const token = await getToken(messaging, {
-      vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-    });
-
-    if (!token) {
-      console.log('❌ No registration token available');
-      return null;
-    }
-
-    console.log('✅ FCM Token obtained');
-    return token;
-  } catch (error) {
-    console.error('❌ Error getting FCM token:', error);
-    return null;
-  }
-};
-
-
+// Messaging removed
 
 export { 
   auth, 
   firestore, 
-  storage, 
-  messaging, 
-  getFCMToken, 
-  initializeMessaging 
+  storage
 };
 export default app;

@@ -118,18 +118,8 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                       // Update cooldown
                       notificationCooldownRef.current[chat.id] = now;
                       
-                      // Import and send push notification
-                      const { sendPushNotification } = await import('@/lib/notifications');
                       
-                      const notificationPayload = {
-                        title: `New message from ${otherUserInfo.name}`,
-                        body: chat.lastMessage || 'You have a new message',
-                        chatId: chat.id,
-                        senderName: otherUserInfo.name,
-                        message: chat.lastMessage || 'New message'
-                      };
-                      
-                      await sendPushNotification(otherUserId, notificationPayload);
+                     
                       
                       console.log(`✅ Push notification sent to ${otherUserId}`);
                     } else {

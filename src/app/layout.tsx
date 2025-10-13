@@ -4,7 +4,6 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
-import FCMInitializer from '@/components/notifications/FCMInitializer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -40,7 +39,6 @@ export default function RootLayout({
       <body className={inter.className}>
         <AuthProvider>
           {children}
-          <FCMInitializer />
           <Toaster 
             position="top-right"
             toastOptions={{
