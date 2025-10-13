@@ -1,4 +1,4 @@
-// app/api/send-notification/route.ts - IMPROVED VERSION
+// app/api/send-notification/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 // Firebase Admin setup

@@ -1,4 +1,4 @@
-// --- path: /src/lib/firestore.ts ---
+// lib/firestore.ts
 import { 
   collection, 
   doc, 
@@ -12,7 +12,8 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
-  writeBatch
+  writeBatch,
+  limit
 } from 'firebase/firestore';
 import { firestore } from './firebase';
 import { Chat, Message, User } from '@/types';
@@ -20,8 +21,6 @@ import { Chat, Message, User } from '@/types';
 // Collection references
 export const usersCollection = collection(firestore, 'users');
 export const chatsCollection = collection(firestore, 'chats');
-export const userChatsCollection = (userId: string) => 
-  collection(firestore, 'userChats', userId, 'chats');
 
 // Helper to get messages collection for a chat
 export const messagesCollection = (chatId: string) => 
@@ -43,12 +42,16 @@ export const createUserProfile = async (user: User) => {
         createdAt: serverTimestamp(),
         lastSeen: serverTimestamp(),
         isOnline: true,
+        fcmToken: null,
+        fcmTokenUpdatedAt: null,
       });
+      console.log('✅ New user profile created:', user.uid);
     } else {
       await updateDoc(userRef, {
         lastSeen: serverTimestamp(),
         isOnline: true,
       });
+      console.log('✅ User profile updated:', user.uid);
     }
     
     return userRef;
@@ -71,62 +74,39 @@ export const updateUserProfile = async (userId: string, updates: Partial<User>) 
   }
 };
 
-// Chat operations - ONE-TO-ONE ONLY
-export const createChat = async (participants: string[]) => {
+// Chat operations - STRICTLY ONE-TO-ONE ONLY
+export const createChat = async (user1Id: string, user2Id: string) => {
   try {
-    // Sort participants to ensure consistent chat ID generation
-    const sortedParticipants = [...participants].sort();
+    // Sort participants to ensure consistent chat ID
+    const participants = [user1Id, user2Id].sort();
     
-    // Check if chat already exists between these exact users (one-to-one only)
-    const existingChatsQuery = query(
+    // Check if chat already exists between these two users
+    const existingChatQuery = query(
       chatsCollection,
-      where('participants', 'array-contains', sortedParticipants[0])
+      where('participants', '==', participants),
+      limit(1)
     );
     
-    const existingChatsSnapshot = await getDocs(existingChatsQuery);
+    const existingChatSnapshot = await getDocs(existingChatQuery);
     
-    let existingChat: any = null;
-    
-    existingChatsSnapshot.forEach((doc) => {
-      const chatData = doc.data();
-      const chatParticipants = chatData.participants || [];
-      
-      // Check if both participants arrays have the same users (one-to-one only)
-      const hasAllParticipants = sortedParticipants.every(pid => 
-        chatParticipants.includes(pid)
-      );
-      const sameLength = chatParticipants.length === sortedParticipants.length;
-      
-      if (hasAllParticipants && sameLength) {
-        existingChat = doc;
-      }
-    });
-    
-    if (existingChat) {
+    if (!existingChatSnapshot.empty) {
+      const existingChat = existingChatSnapshot.docs[0];
+      console.log('✅ Existing chat found:', existingChat.id);
       return doc(firestore, 'chats', existingChat.id);
     }
 
     // Create new one-to-one chat
     const chatData = {
-      participants: sortedParticipants,
+      participants: participants,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      isGroup: false, // Always false for one-to-one
+      lastMessage: '',
+      lastMessageTimestamp: serverTimestamp(),
+      lastMessageSender: '',
     };
 
     const chatRef = await addDoc(chatsCollection, chatData);
-    
-    // Create userChat entries for each participant
-    for (const participantId of sortedParticipants) {
-      const userChatRef = doc(firestore, 'userChats', participantId, 'chats', chatRef.id);
-      await setDoc(userChatRef, {
-        chatId: chatRef.id,
-        userId: participantId,
-        lastRead: serverTimestamp(),
-        muted: false,
-        archived: false,
-      });
-    }
+    console.log('✅ New chat created:', chatRef.id);
     
     return chatRef;
   } catch (error) {
@@ -153,7 +133,7 @@ export const getChat = async (chatId: string) => {
 
 export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
   try {
-    //console.log('🔄 markAllMessagesAsRead called for chat:', chatId, 'user:', userId);
+    console.log('📖 Marking messages as read for user:', userId, 'in chat:', chatId);
     
     const messagesRef = messagesCollection(chatId);
     const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
@@ -162,53 +142,29 @@ export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
     let markedCount = 0;
     const batch = writeBatch(firestore);
     
-    // Get chat data for participants
-    const chatRef = doc(firestore, 'chats', chatId);
-    const chatSnap = await getDoc(chatRef);
-    const chatData = chatSnap.data() as Chat;
-    const participants = chatData.participants || [];
-    
-    // For one-to-one chat, there should be exactly 2 participants
-    const otherParticipant = participants.find(pid => pid !== userId);
-    
     for (const messageDoc of snapshot.docs) {
       const messageData = messageDoc.data();
       const readBy = messageData.readBy || [];
-      const sender = messageData.sender || messageData.senderId;
+      const senderId = messageData.senderId;
       
       // Only mark messages from other user as read
-      if (!readBy.includes(userId) && sender !== userId) {
+      if (!readBy.includes(userId) && senderId !== userId) {
         markedCount++;
         
         const messageRef = doc(firestore, 'chats', chatId, 'messages', messageDoc.id);
-        const newReadBy = [...readBy, userId];
-        
-        // For one-to-one: message is read when the other participant reads it
-        const isReadByOther = newReadBy.includes(otherParticipant || '');
-        
         batch.update(messageRef, {
-          readBy: newReadBy,
+          readBy: [...readBy, userId],
           read: true,
-          status: isReadByOther ? 'read' : 'delivered'
+          status: 'read'
         });
-        
-        //console.log(`✅ Marking message ${messageDoc.id} as read by ${userId}`);
       }
     }
     
     if (markedCount > 0) {
       await batch.commit();
-      //console.log(`🎯 Successfully marked ${markedCount} messages as read`);
-      
-      // Update chat's last message status
-      await updateDoc(chatRef, {
-        lastMessageStatus: 'read',
-        updatedAt: serverTimestamp()
-      });
-      
-      //console.log('✅ Chat last message status updated to read');
+      console.log(`✅ Marked ${markedCount} messages as read`);
     } else {
-      //console.log('ℹ️ No messages to mark as read');
+      console.log('ℹ️ No messages to mark as read');
     }
     
   } catch (error) {
@@ -217,7 +173,7 @@ export const markAllMessagesAsRead = async (chatId: string, userId: string) => {
   }
 };
 
-// FIXED: Improved calculateUnreadCount for better accuracy
+// Calculate unread count for one-to-one chat
 export const calculateUnreadCount = async (chatId: string, userId: string): Promise<number> => {
   try {
     const messagesRef = messagesCollection(chatId);
@@ -229,16 +185,14 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
     snapshot.docs.forEach(messageDoc => {
       const messageData = messageDoc.data();
       const readBy = messageData.readBy || [];
-      const sender = messageData.sender || messageData.senderId;
+      const senderId = messageData.senderId;
       
       // Count only messages from other user that are unread
-      if (sender !== userId && !readBy.includes(userId)) {
+      if (senderId !== userId && !readBy.includes(userId)) {
         unreadCount++;
-        //console.log(`📊 Unread message found: ${messageDoc.id} from ${sender}`);
       }
     });
     
-    //console.log(`📊 Total unread count for chat ${chatId}: ${unreadCount}`);
     return unreadCount;
   } catch (error) {
     console.error('Error calculating unread count:', error);
@@ -246,23 +200,18 @@ export const calculateUnreadCount = async (chatId: string, userId: string): Prom
   }
 };
 
-// Get user chats (one-to-one only)
+// Get user chats - ONE-TO-ONE ONLY
 export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) => {
   const q = query(
     chatsCollection,
-    where('participants', 'array-contains', userId)
+    where('participants', 'array-contains', userId),
+    orderBy('lastMessageTimestamp', 'desc')
   );
   
   return onSnapshot(q, async (snapshot) => {
     const chatsPromises = snapshot.docs.map(async (chatDoc) => {
       try {
         const chatData = chatDoc.data();
-        
-        // Skip group chats (though we're not creating them)
-        if (chatData.isGroup) {
-          return null;
-        }
-        
         const unreadCount = await calculateUnreadCount(chatDoc.id, userId);
         
         const chat = {
@@ -280,16 +229,8 @@ export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) 
     
     try {
       let chats = await Promise.all(chatsPromises);
-      
-      // Filter out null values and sort by timestamp
       chats = chats.filter(chat => chat !== null) as Chat[];
-      
-      chats = chats.sort((a, b) => {
-        const timeA = a.lastMessageTimestamp?.toDate().getTime() || a.createdAt?.toDate().getTime() || 0;
-        const timeB = b.lastMessageTimestamp?.toDate().getTime() || b.createdAt?.toDate().getTime() || 0;
-        return timeB - timeA;
-      });
-      
+      console.log(`📋 Processed ${chats.length} chats for user:`, userId);
       callback(chats);
     } catch (error) {
       console.error('Error processing chats:', error);
@@ -300,38 +241,39 @@ export const getUserChats = (userId: string, callback: (chats: Chat[]) => void) 
   });
 };
 
-// Message operations - SIMPLIFIED FOR ONE-TO-ONE
-export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 'timestamp' | 'status'>) => {
+// Message operations - ONE-TO-ONE ONLY
+export const sendMessage = async (chatId: string, messageData: {
+  text: string;
+  senderId: string;
+  senderName?: string;
+}) => {
   try {
     const messagesRef = messagesCollection(chatId);
     
-    // Get chat to know participants
-    const chatRef = doc(firestore, 'chats', chatId);
-    const chatSnap = await getDoc(chatRef);
-    const chatData = chatSnap.data() as Chat;
-    
-    const messageData = {
-      text: message.text,
-      sender: message.senderId,
+    // Create message
+    const message = {
+      text: messageData.text,
+      senderId: messageData.senderId,
+      senderName: messageData.senderName,
       timestamp: serverTimestamp(),
       read: false,
-      readBy: [message.senderId],
+      readBy: [messageData.senderId], // Sender has read their own message
       status: 'sent',
-      type: 'text',
+      type: 'text' as const,
     };
     
-    const messageRef = await addDoc(messagesRef, messageData);
+    const messageRef = await addDoc(messagesRef, message);
     
-    // Update chat's last message
+    // Update chat's last message info
+    const chatRef = doc(firestore, 'chats', chatId);
     await updateDoc(chatRef, {
-      lastMessage: message.text,
+      lastMessage: messageData.text,
       lastMessageTimestamp: serverTimestamp(),
-      lastMessageSender: message.senderId,
-      lastMessageStatus: 'sent',
+      lastMessageSender: messageData.senderId,
       updatedAt: serverTimestamp(),
     });
 
-    
+    console.log('✅ Message sent:', messageRef.id);
     return messageRef;
   } catch (error) {
     console.error('Error sending message:', error);
@@ -339,20 +281,20 @@ export const sendMessage = async (chatId: string, message: Omit<Message, 'id' | 
   }
 };
 
-
 export const getMessages = (chatId: string, callback: (messages: Message[]) => void) => {
   const q = query(
     messagesCollection(chatId),
     orderBy('timestamp', 'asc')
   );
   
-  return onSnapshot(q, async (snapshot) => {
+  return onSnapshot(q, (snapshot) => {
     const messages = snapshot.docs.map(messageDoc => {
       const data = messageDoc.data();
       return {
         id: messageDoc.id,
         text: data.text || '',
-        senderId: data.sender || data.senderId,
+        senderId: data.senderId,
+        senderName: data.senderName,
         timestamp: data.timestamp,
         read: data.read || false,
         readBy: data.readBy || [],
@@ -361,6 +303,7 @@ export const getMessages = (chatId: string, callback: (messages: Message[]) => v
       } as Message;
     });
     
+    console.log(`📨 ${messages.length} messages loaded for chat:`, chatId);
     callback(messages);
   });
 };
@@ -375,6 +318,48 @@ export const updateUserPresence = async (userId: string, isOnline: boolean) => {
     });
   } catch (error) {
     console.error('Error updating user presence:', error);
-    throw error;
+  }
+};
+
+// Get other user from chat
+export const getOtherUserFromChat = async (chat: Chat, currentUserId: string): Promise<User | null> => {
+  try {
+    const otherUserId = chat.participants.find(pid => pid !== currentUserId);
+    if (!otherUserId) {
+      console.log('❌ No other user found in chat');
+      return null;
+    }
+    
+    const userRef = doc(firestore, 'users', otherUserId);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      const userData = { id: userSnap.id, ...userSnap.data() } as User;
+      console.log('✅ Found other user:', userData.displayName || userData.email);
+      return userData;
+    }
+    
+    console.log('❌ Other user document not found:', otherUserId);
+    return null;
+  } catch (error) {
+    console.error('Error getting other user:', error);
+    return null;
+  }
+};
+
+// Get user by ID
+export const getUserById = async (userId: string): Promise<User | null> => {
+  try {
+    const userRef = doc(firestore, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      return { id: userSnap.id, ...userSnap.data() } as User;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting user:', error);
+    return null;
   }
 };

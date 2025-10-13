@@ -1,4 +1,4 @@
-// components/chat/ChatWindow.tsx - FIXED VERSION
+// components/chat/ChatWindow.tsx
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -6,9 +6,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
-import toast from 'react-hot-toast';
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 
 interface ChatWindowProps {
   chatId: string;
@@ -17,74 +14,52 @@ interface ChatWindowProps {
 }
 
 export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatWindowProps) {
-  
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
-  const processedMessagesRef = useRef<Set<string>>(new Set());
   
-
- 
   const previousMessagesRef = useRef<Message[]>([]);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const toastShownRef = useRef<Set<string>>(new Set()); // ✅ Track shown toasts
 
-  // ✅ FIXED: Use useMemo for participantName to prevent unnecessary changes
-  const getParticipantName = () => {
-  if (otherUser) {
-    return otherUser.displayName || otherUser.email?.split('@')[0] || 'User';
-  }
-  
-  // Fallback: Try to get from URL or chat data
-  return 'Unknown User';
-};
+  // Get participant name
+  const getParticipantName = useCallback(() => {
+    if (otherUser) {
+      return otherUser.displayName || otherUser.email?.split('@')[0] || 'User';
+    }
+    return 'Unknown User';
+  }, [otherUser]);
 
-const participantName = getParticipantName();
- // ✅ SIMPLE: useEffect with Browser Notifications
+  const participantName = getParticipantName();
+
+  // Messages listener
   useEffect(() => {
     if (!chatId || !user) return;
 
+    console.log('🔍 Setting up messages listener for chat:', chatId);
+
     const unsubscribe = getMessages(chatId, (msgs) => {
-      const previousCount = previousMessagesRef.current.length;
-      const currentCount = msgs.length;
-
-      // Check for new messages
-      if (previousCount > 0 && currentCount > previousCount) {
-        const newMessages = msgs.slice(previousCount);
-        
-        newMessages.forEach(async (message) => {
-          // Send notification for messages from other users
-          if (message.senderId !== user.uid && otherUser) {
-            const messageId = message.id;
-            
-            // Prevent processing same message multiple times
-            if (!processedMessagesRef.current.has(messageId)) {
-              processedMessagesRef.current.add(messageId);
-              
-              const isChatActive = isActive && document.hasFocus();
-              
-              
-              
-            }
-          }
-        });
-      }
-
+      console.log('💬 Messages updated:', msgs.length);
+      
       setMessages(msgs);
       previousMessagesRef.current = msgs;
 
-      // Mark messages as read
+      // Mark messages as read when chat is active
       if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
         const unreadMessages = msgs.filter(
           (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
         );
         
         if (unreadMessages.length > 0) {
+          console.log('📖 Marking messages as read for active chat');
           markAllMessagesAsRead(chatId, user.uid)
-            .then(() => setHasMarkedInitialRead(true))
-            .catch(() => {});
+            .then(() => {
+              console.log('✅ Messages marked as read');
+              setHasMarkedInitialRead(true);
+            })
+            .catch((error) => {
+              console.error('❌ Error marking messages as read:', error);
+            });
         } else {
           setHasMarkedInitialRead(true);
         }
@@ -92,13 +67,14 @@ const participantName = getParticipantName();
     });
 
     return () => {
+      console.log('🧹 Cleaning up messages listener for chat:', chatId);
       unsubscribe();
       setHasMarkedInitialRead(false);
       previousMessagesRef.current = [];
     };
-  }, [chatId, user, otherUser?.uid, hasMarkedInitialRead, isActive]);
+  }, [chatId, user, isActive]);
 
-  // Send message function
+  // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !chatId) return;
@@ -107,12 +83,14 @@ const participantName = getParticipantName();
     
     try {
       setLoading(true);
+      console.log('📤 Sending message:', messageText.substring(0, 50) + '...');
+      
       await sendMessage(chatId, {
         text: messageText,
         senderId: user.uid,
-        read: false,
-        type: 'text',
+        senderName: user.displayName || user.email?.split('@')[0] || 'User'
       });
+      
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -121,8 +99,7 @@ const participantName = getParticipantName();
     }
   };
 
- 
-  // 🕒 Improved time formatting
+  // Time formatting
   const formatMessageTime = (timestamp: { toDate: () => Date } | null) => {
     if (!timestamp) return '';
     try {
@@ -140,15 +117,13 @@ const participantName = getParticipantName();
     }
   };
 
-
-  // ✅ Message status icons
+  // Message status icons
   const getMessageStatusIcon = (m: Message) => {
     if (m.senderId !== user?.uid) return null;
     
     const readByCount = m.readBy?.length || 0;
-    const participantsCount = 2;
     
-    if (readByCount >= participantsCount) {
+    if (readByCount >= 2) { // Both participants have read
       return <span className="text-blue-500 ml-2" title="Read">✓✓</span>;
     } else if (m.status === 'delivered') {
       return <span className="text-gray-400 ml-2" title="Delivered">✓✓</span>;
@@ -157,7 +132,7 @@ const participantName = getParticipantName();
     }
   };
 
-  // 📱 Handle Enter key for sending
+  // Handle Enter key for sending
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -209,8 +184,9 @@ const participantName = getParticipantName();
           </div>
         </div>
       </div>
+
       {/* Messages Container */}
-      <div className="flex-1 overflow-hidden bg-gradient-to-b from-gray-50 to-white" ref={chatContainerRef}>
+      <div className="flex-1 overflow-hidden bg-gradient-to-b from-gray-50 to-white">
         <ScrollToBottom 
           className="h-full w-full"
           followButtonClassName="scroll-to-bottom-follow-button"
@@ -230,58 +206,58 @@ const participantName = getParticipantName();
             ) : (
               <div className="space-y-3">
                 {messages.map((m, index) => {
-  const isOwn = m.senderId === user?.uid;
-  const senderName = isOwn ? 'You' : participantName;
-  const isUnread = !m.readBy?.includes(user?.uid || '') && !isOwn;
-  const showDate = index === 0 || 
-    (messages[index - 1]?.timestamp?.toDate().toDateString() !== m.timestamp?.toDate().toDateString());
-  
-  return (
-    <div key={m.id}>
-      {showDate && (
-        <div className="flex justify-center my-4">
-          <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-            {m.timestamp?.toDate().toLocaleDateString([], { 
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
-          </span>
-        </div>
-      )}
-      
-      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-        <div
-          className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl transition-all duration-200 ${
-            isOwn
-              ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-sm'
-              : `bg-white text-gray-800 border border-gray-200 shadow-sm ${
-                  isUnread ? 'border-l-4 border-l-yellow-400' : ''
-                }`
-          }`}
-        >
-          {/* Show sender name for other user's messages */}
-          {!isOwn && (
-            <p className="text-xs font-semibold text-gray-600 mb-1">{senderName}</p>
-          )}
-          <p className="text-sm break-words leading-relaxed">{m.text}</p>
-          <div
-            className={`flex justify-between items-center mt-2 ${
-              isOwn ? 'text-green-100' : 'text-gray-500'
-            }`}
-          >
-            <span className="text-xs">
-              {formatMessageTime(m.timestamp)}
-              {isUnread && <span className="ml-2 text-yellow-500 animate-pulse" title="Unread">●</span>}
-            </span>
-            {getMessageStatusIcon(m)}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-})}
+                  const isOwn = m.senderId === user?.uid;
+                  const senderName = isOwn ? 'You' : participantName;
+                  const isUnread = !m.readBy?.includes(user?.uid || '') && !isOwn;
+                  const showDate = index === 0 || 
+                    (messages[index - 1]?.timestamp?.toDate().toDateString() !== m.timestamp?.toDate().toDateString());
+                  
+                  return (
+                    <div key={m.id}>
+                      {showDate && (
+                        <div className="flex justify-center my-4">
+                          <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+                            {m.timestamp?.toDate().toLocaleDateString([], { 
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl transition-all duration-200 ${
+                            isOwn
+                              ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-sm'
+                              : `bg-white text-gray-800 border border-gray-200 shadow-sm ${
+                                  isUnread ? 'border-l-4 border-l-yellow-400' : ''
+                                }`
+                          }`}
+                        >
+                          {/* Show sender name for other user's messages */}
+                          {!isOwn && (
+                            <p className="text-xs font-semibold text-gray-600 mb-1">{senderName}</p>
+                          )}
+                          <p className="text-sm break-words leading-relaxed">{m.text}</p>
+                          <div
+                            className={`flex justify-between items-center mt-2 ${
+                              isOwn ? 'text-green-100' : 'text-gray-500'
+                            }`}
+                          >
+                            <span className="text-xs">
+                              {formatMessageTime(m.timestamp)}
+                              {isUnread && <span className="ml-2 text-yellow-500 animate-pulse" title="Unread">●</span>}
+                            </span>
+                            {getMessageStatusIcon(m)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

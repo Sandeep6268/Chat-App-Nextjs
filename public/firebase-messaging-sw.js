@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js - REMOVE ICON REFERENCES
+// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -21,11 +21,11 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new message',
-    icon: '/favicon.ico', // Use favicon instead
-    badge: '/favicon.ico', // Use favicon instead
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
     data: payload.data || {},
     tag: payload.data?.chatId || 'chat',
-    requireInteraction: false,
+    requireInteraction: true,
   };
 
   // Show notification
@@ -34,12 +34,13 @@ messaging.onBackgroundMessage((payload) => {
 
 // Notification click handler
 self.addEventListener('notificationclick', (event) => {
-  console.log('🔔 Notification clicked');
+  console.log('🔔 Notification clicked:', event.notification.data);
   
   event.notification.close();
 
   const chatId = event.notification.data?.chatId;
-  const urlToOpen = chatId ? `${self.origin}/chat/${chatId}` : self.origin;
+  const baseUrl = self.location.origin;
+  const urlToOpen = chatId ? `${baseUrl}/chat/${chatId}` : baseUrl;
   
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((windowClients) => {

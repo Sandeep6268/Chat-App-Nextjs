@@ -1,7 +1,7 @@
-// components/notifications/FCMInitializer.tsx - FIXED VERSION
+// components/notifications/FCMInitializer.tsx
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getFCMToken, onForegroundMessage } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -9,7 +9,6 @@ import { firestore } from '@/lib/firebase';
 
 export default function FCMInitializer() {
   const { user } = useAuth();
-  const [token, setToken] = useState<string | null>(null);
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -42,7 +41,6 @@ export default function FCMInitializer() {
 
       try {
         const fcmToken = await getFCMToken();
-        setToken(fcmToken);
         
         if (fcmToken) {
           // Save token to user document
@@ -59,7 +57,7 @@ export default function FCMInitializer() {
     };
 
     initializeFCM();
-  }, [user?.uid]); // Only depend on user.uid
+  }, [user?.uid]);
 
   useEffect(() => {
     // Handle foreground messages - only setup once
@@ -72,14 +70,14 @@ export default function FCMInitializer() {
         
         new Notification(title || 'New Message', {
           body: body || 'You have a new message',
-          icon: '/favicon.ico', // Use favicon
+          icon: '/favicon.ico',
           tag: payload.data?.chatId,
         });
       }
     });
 
     return () => unsubscribe();
-  }, []); // Empty dependency array - setup once
+  }, []);
 
-  return null; // No need to render anything
+  return null;
 }
