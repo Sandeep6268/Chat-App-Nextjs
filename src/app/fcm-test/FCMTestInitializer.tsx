@@ -1,7 +1,7 @@
 // fcm-test/FCMTestInitializer.tsx
 'use client';
 import { useEffect, useState } from "react";
-import { messaging, getToken, onMessage } from "./firebase-config";
+import { messaging, getToken, onMessage } from "@/app/fcm-test/firebase-config";
 
 export default function FCMTestInitializer() {
   const [token, setToken] = useState<string | null>(null);
