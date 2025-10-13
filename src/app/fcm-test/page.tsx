@@ -1,5 +1,12 @@
-// fcm-test/page.tsx
-import FCMTestInitializer from "@/app/fcm-test/FCMTestInitializer";
+// app/fcm-test/page.tsx
+'use client';
+
+import dynamic from "next/dynamic";
+
+const FCMTestInitializer = dynamic(
+  () => import("./FCMTestInitializer"),
+  { ssr: false } // 🔹 Prevents server-side execution
+);
 
 export default function FCMTestPage() {
   return (
@@ -12,4 +19,3 @@ export default function FCMTestPage() {
     </main>
   );
 }
-
