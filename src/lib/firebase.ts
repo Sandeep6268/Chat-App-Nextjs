@@ -43,17 +43,6 @@ const initializeMessaging = async () => {
     }
 
     messaging = getMessaging(app);
-    
-    // Configure for Vercel deployment
-    if (typeof window !== 'undefined') {
-      // Ensure we're in a secure context (HTTPS)
-      if (window.isSecureContext) {
-        console.log('✅ Secure context for FCM');
-      } else {
-        console.log('❌ Not in secure context - FCM may not work');
-      }
-    }
-    
     console.log('✅ FCM Messaging initialized');
     return messaging;
   } catch (error) {
@@ -85,7 +74,6 @@ const getFCMToken = async (): Promise<string | null> => {
     // Get FCM token with VAPID key
     const token = await getToken(messaging, {
       vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-      serviceWorkerRegistration: await navigator.serviceWorker.ready
     });
 
     if (!token) {
@@ -101,12 +89,14 @@ const getFCMToken = async (): Promise<string | null> => {
   }
 };
 
+
+
 export { 
   auth, 
   firestore, 
   storage, 
   messaging, 
-  getFCMToken,
+  getFCMToken, 
   initializeMessaging 
 };
 export default app;

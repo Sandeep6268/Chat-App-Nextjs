@@ -26,15 +26,16 @@ messaging.onBackgroundMessage((payload) => {
     data: payload.data || {},
     tag: payload.data?.chatId || 'chat',
     requireInteraction: true,
-    vibrate: [200, 100, 200],
+    actions: [
+      {
+        action: 'open',
+        title: 'Open Chat'
+      }
+    ]
   };
 
-  console.log('🔄 Showing notification...');
-  
   // Show notification
-  self.registration.showNotification(notificationTitle, notificationOptions)
-    .then(() => console.log('✅ Notification shown successfully'))
-    .catch(error => console.error('❌ Error showing notification:', error));
+  return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Notification click handler
@@ -48,29 +49,18 @@ self.addEventListener('notificationclick', (event) => {
   const urlToOpen = chatId ? `${baseUrl}/chat/${chatId}` : `${baseUrl}/chat`;
   
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if any window is already open with the chat
+    clients.matchAll({ type: 'window' }).then((windowClients) => {
+      // Check if chat window is already open
       for (const client of windowClients) {
         if (client.url.includes('/chat') && 'focus' in client) {
           return client.focus();
         }
       }
       
-      // If no window is open, open a new one
+      // Open new window
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
     })
   );
-});
-
-// Service worker installation
-self.addEventListener('install', (event) => {
-  console.log('🔧 Service Worker installing...');
-  self.skipWaiting(); // Activate immediately
-});
-
-self.addEventListener('activate', (event) => {
-  console.log('🔧 Service Worker activating...');
-  return self.clients.claim(); // Take control immediately
 });
