@@ -1,29 +1,42 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
+  experimental: {
+    appDir: true,
   },
-  typescript: {
-    ignoreBuildErrors: true,
+  // Enable SWC minification for better performance
+  swcMinify: true,
+  // Ensure static assets are served correctly
+  images: {
+    domains: ['lh3.googleusercontent.com'],
   },
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
-  // Important for OneSignal
+  // Headers for service worker and PWA
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: '/firebase-messaging-sw.js',
         headers: [
           {
+            key: 'Content-Type',
+            value: 'application/javascript',
+          },
+          {
             key: 'Service-Worker-Allowed',
-            value: '/'
-          }
-        ]
-      }
+            value: '/',
+          },
+        ],
+      },
+      {
+        source: '/manifest.json',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/manifest+json',
+          },
+        ],
+      },
     ];
-  }
+  },
 }
 
-module.exports = nextConfig;
+module.exports = nextConfig

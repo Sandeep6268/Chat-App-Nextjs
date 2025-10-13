@@ -14,9 +14,9 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background message handler - ONLY THIS REMAINS
+// Background message handler
 messaging.onBackgroundMessage((payload) => {
-  console.log('📱 Received background push notification:', payload);
+  console.log('📱 Received background message in SW:', payload);
 
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
@@ -26,16 +26,15 @@ messaging.onBackgroundMessage((payload) => {
     data: payload.data || {},
     tag: payload.data?.chatId || 'chat',
     requireInteraction: true,
-    actions: [
-      {
-        action: 'open',
-        title: 'Open Chat'
-      }
-    ]
+    vibrate: [200, 100, 200],
   };
 
+  console.log('🔄 Showing notification...');
+  
   // Show notification
-  return self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(notificationTitle, notificationOptions)
+    .then(() => console.log('✅ Notification shown successfully'))
+    .catch(error => console.error('❌ Error showing notification:', error));
 });
 
 // Notification click handler
@@ -49,18 +48,29 @@ self.addEventListener('notificationclick', (event) => {
   const urlToOpen = chatId ? `${baseUrl}/chat/${chatId}` : `${baseUrl}/chat`;
   
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((windowClients) => {
-      // Check if chat window is already open
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Check if any window is already open with the chat
       for (const client of windowClients) {
         if (client.url.includes('/chat') && 'focus' in client) {
           return client.focus();
         }
       }
       
-      // Open new window
+      // If no window is open, open a new one
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
     })
   );
+});
+
+// Service worker installation
+self.addEventListener('install', (event) => {
+  console.log('🔧 Service Worker installing...');
+  self.skipWaiting(); // Activate immediately
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('🔧 Service Worker activating...');
+  return self.clients.claim(); // Take control immediately
 });

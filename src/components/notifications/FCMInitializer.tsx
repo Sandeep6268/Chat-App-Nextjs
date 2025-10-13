@@ -19,10 +19,21 @@ export default function FCMInitializer() {
     const initializeServiceWorker = async () => {
       if ('serviceWorker' in navigator) {
         try {
+          // For Vercel, use the correct path
           const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
             scope: '/',
+            updateViaCache: 'none' // Important for updates
           });
+          
           console.log('✅ Service Worker registered:', registration);
+          
+          // Check if service worker is actually controlling the page
+          if (navigator.serviceWorker.controller) {
+            console.log('✅ Service Worker is controlling the page');
+          } else {
+            console.log('❌ Service Worker is not controlling the page');
+          }
+          
         } catch (error) {
           console.error('❌ Service Worker registration failed:', error);
         }
@@ -31,7 +42,12 @@ export default function FCMInitializer() {
       }
     };
 
-    initializeServiceWorker();
+    // Wait for page to load before registering service worker
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeServiceWorker);
+    } else {
+      initializeServiceWorker();
+    }
   }, []);
 
   useEffect(() => {
@@ -40,6 +56,11 @@ export default function FCMInitializer() {
       if (!user) return;
 
       try {
+        console.log('🔄 Initializing FCM for user:', user.uid);
+        
+        // Wait a bit for service worker to be ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         const fcmToken = await getFCMToken();
         
         if (fcmToken) {
@@ -50,6 +71,8 @@ export default function FCMInitializer() {
             fcmTokenUpdatedAt: new Date()
           });
           console.log('✅ FCM token saved for user:', user.uid);
+        } else {
+          console.log('❌ No FCM token obtained');
         }
       } catch (error) {
         console.error('❌ Error in FCM initialization:', error);
@@ -58,8 +81,6 @@ export default function FCMInitializer() {
 
     initializeFCM();
   }, [user?.uid]);
-
-
 
   return null;
 }
