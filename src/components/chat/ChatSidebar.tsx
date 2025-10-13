@@ -29,7 +29,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   
   const previousChatsRef = useRef<Chat[]>([]);
   const previousTotalUnreadRef = useRef<number>(0);
-  const notificationCooldownRef = useRef<{[key: string]: number}>({});
 
   const currentChatId = pathname?.split('/chat/')[1];
 
@@ -74,64 +73,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           
           console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
           
-          // 🚨 FIXED: Improved notification logic
-          if (totalUnreadMessages > previousTotal && previousTotal >= 0) {
-            const increasedBy = totalUnreadMessages - previousTotal;
-            console.log(`🎯 Unread count increased by ${increasedBy}! Checking for notifications...`);
-            
-            // Find ALL chats with new unread messages
-            userChats.forEach(async (chat) => {
-              const previousChat = previousChatsRef.current.find(c => c.id === chat.id);
-              const previousUnread = previousChat?.unreadCount || 0;
-              const currentUnread = chat.unreadCount || 0;
-              
-              console.log(`🔍 Chat ${chat.id}: ${previousUnread} → ${currentUnread} unread`);
-              
-              // Send notification for EVERY new unread message
-              if (currentUnread > previousUnread) {
-                const otherUserInfo = getOtherUserInfo(chat);
-                const newMessagesCount = currentUnread - previousUnread;
-                
-                console.log(`🎯 Chat ${chat.id} has ${newMessagesCount} new unread messages!`);
-                
-                // Get the other user ID (the one who should receive notification)
-                const otherUserId = chat.participants?.find(pid => pid !== user.uid);
-                
-                if (otherUserId && newMessagesCount > 0) {
-                  try {
-                    // Check if user is not currently viewing this chat
-                    const isUserViewingThisChat = currentChatId === chat.id;
-                    const isWindowFocused = document.hasFocus();
-                    
-                    // Simple cooldown to prevent duplicate notifications (5 seconds)
-                    const now = Date.now();
-                    const lastNotificationTime = notificationCooldownRef.current[chat.id] || 0;
-                    const cooldownPeriod = 5000; // 5 seconds
-                    
-                    const shouldSendNotification = 
-                      (!isUserViewingThisChat || !isWindowFocused) && 
-                      (now - lastNotificationTime > cooldownPeriod);
-                    
-                    if (shouldSendNotification) {
-                      console.log(`📱 Sending push notification to ${otherUserId} for ${newMessagesCount} new message(s)`);
-                      
-                      // Update cooldown
-                      notificationCooldownRef.current[chat.id] = now;
-                      
-                      
-                     
-                      
-                      console.log(`✅ Push notification sent to ${otherUserId}`);
-                    } else {
-                      console.log(`⏳ Skipping notification - cooldown active or user is viewing chat`);
-                    }
-                  } catch (error) {
-                    console.error('❌ Error sending push notification:', error);
-                  }
-                }
-              }
-            });
-          }
+          
           
           // Update state
           previousTotalUnreadRef.current = totalUnreadMessages;
