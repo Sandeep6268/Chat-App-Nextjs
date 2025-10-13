@@ -99,30 +99,24 @@ export default function FCMTester() {
 const sendTestNotification = async (): Promise<void> => {
   try {
     setIsLoading(true);
-    addTestResult('info', 'Testing API...');
+    addTestResult('info', 'Sending notification...');
 
     const response = await fetch('/api/fcm-mobile-test', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token: "test-token",
-        title: "Test",
-        body: "Test"
-      }),
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({test: true})
     });
 
     const result = await response.json();
     
     if (result.success) {
-      addTestResult('success', '✅ API Working! Test passed');
+      addTestResult('success', '✅ Notification sent! Check your notifications');
     } else {
-      addTestResult('error', '❌ API Failed');
+      addTestResult('error', 'Failed');
     }
 
-  } catch (error: any) {
-    addTestResult('error', '❌ Network error');
+  } catch (error) {
+    addTestResult('error', 'Network error');
   } finally {
     setIsLoading(false);
   }
