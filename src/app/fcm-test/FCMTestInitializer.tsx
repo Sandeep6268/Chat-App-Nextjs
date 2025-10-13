@@ -56,17 +56,14 @@ export default function FCMTestInitializer() {
   onClick={async () => {
     if (!token) return alert("Token not ready");
 
-    const res = await fetch("/fcm-test/route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token,
-        title: "Test Notification",
-        body: "This is a FCM test message from your mobile page",
-      }),
-    });
+    const res = await fetch("/fcm-test/route", { method: "POST", ... });
+if (!res.ok) {
+  console.error("Server error", await res.text());
+  return;
+}
+const data = await res.json();
+console.log(data);
 
-    const data = await res.json();
     console.log("Notification send response:", data);
   }}
 >
