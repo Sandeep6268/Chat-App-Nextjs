@@ -1,4 +1,3 @@
-// fcm-test/route.ts
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
 
@@ -14,12 +13,8 @@ if (!admin.apps.length) {
 
 export async function POST(req: Request) {
   const { token, title, body } = await req.json();
-
   try {
-    const message = {
-      token,
-      notification: { title, body },
-    };
+    const message = { token, notification: { title, body } };
     const response = await admin.messaging().send(message);
     return NextResponse.json({ success: true, response });
   } catch (err) {
