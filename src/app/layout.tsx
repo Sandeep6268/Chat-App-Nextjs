@@ -1,4 +1,4 @@
-// app/layout.tsx - FIXED VERSION
+// app/layout.tsx - UPDATED
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Chat App',
   description: 'A real-time chat application built with Next.js and Firebase',
-  manifest: '/manifest.json', // This should work now
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
@@ -22,10 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* REMOVE Pusher Beams SDK - Conflict kar raha hoga */}
-        {/* <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script> */}
-        
-        {/* PWA Meta Tags */}
+        {/* Simple PWA Meta Tags - No icon references */}
         <meta name="application-name" content="Chat App" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -37,20 +34,8 @@ export default function RootLayout({
         <meta name="msapplication-tap-highlight" content="no" />
         <meta name="theme-color" content="#10B981" />
 
-        {/* Apple Touch Icons */}
-        <link rel="apple-touch-icon" href="/icons/icon-152x152.png" />
-        <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
-        <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167x167.png" />
-
-        {/* Favicon */}
-        <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
-        <link rel="shortcut icon" href="/favicon.ico" />
-        
-        {/* Preconnect for Firebase */}
-        <link rel="preconnect" href="https://firestore.googleapis.com" />
-        <link rel="preconnect" href="https://firebasestorage.googleapis.com" />
+        {/* Favicon - Use emoji as favicon */}
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>" />
       </head>
       <body className={inter.className}>
         <AuthProvider>

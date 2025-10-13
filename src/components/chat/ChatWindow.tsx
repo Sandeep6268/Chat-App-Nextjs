@@ -32,8 +32,16 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const toastShownRef = useRef<Set<string>>(new Set()); // ✅ Track shown toasts
 
   // ✅ FIXED: Use useMemo for participantName to prevent unnecessary changes
-  const participantName = useRef(otherUser?.displayName || otherUser?.email?.split('@')[0] || 'User').current;
+  const getParticipantName = () => {
+  if (otherUser) {
+    return otherUser.displayName || otherUser.email?.split('@')[0] || 'User';
+  }
+  
+  // Fallback: Try to get from URL or chat data
+  return 'Unknown User';
+};
 
+const participantName = getParticipantName();
  // ✅ SIMPLE: useEffect with Browser Notifications
   useEffect(() => {
     if (!chatId || !user) return;
@@ -222,53 +230,58 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
             ) : (
               <div className="space-y-3">
                 {messages.map((m, index) => {
-                  const isOwn = m.senderId === user?.uid;
-                  const isUnread = !m.readBy?.includes(user?.uid || '') && !isOwn;
-                  const showDate = index === 0 || 
-                    (messages[index - 1]?.timestamp?.toDate().toDateString() !== m.timestamp?.toDate().toDateString());
-                  
-                  return (
-                    <div key={m.id}>
-                      {showDate && (
-                        <div className="flex justify-center my-4">
-                          <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                            {m.timestamp?.toDate().toLocaleDateString([], { 
-                              weekday: 'long',
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
-                          </span>
-                        </div>
-                      )}
-                      
-                      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                          className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl transition-all duration-200 ${
-                            isOwn
-                              ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-sm'
-                              : `bg-white text-gray-800 border border-gray-200 shadow-sm ${
-                                  isUnread ? 'border-l-4 border-l-yellow-400' : ''
-                                }`
-                          }`}
-                        >
-                          <p className="text-sm break-words leading-relaxed">{m.text}</p>
-                          <div
-                            className={`flex justify-between items-center mt-2 ${
-                              isOwn ? 'text-green-100' : 'text-gray-500'
-                            }`}
-                          >
-                            <span className="text-xs">
-                              {formatMessageTime(m.timestamp)}
-                              {isUnread && <span className="ml-2 text-yellow-500 animate-pulse" title="Unread">●</span>}
-                            </span>
-                            {getMessageStatusIcon(m)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+  const isOwn = m.senderId === user?.uid;
+  const senderName = isOwn ? 'You' : participantName;
+  const isUnread = !m.readBy?.includes(user?.uid || '') && !isOwn;
+  const showDate = index === 0 || 
+    (messages[index - 1]?.timestamp?.toDate().toDateString() !== m.timestamp?.toDate().toDateString());
+  
+  return (
+    <div key={m.id}>
+      {showDate && (
+        <div className="flex justify-center my-4">
+          <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+            {m.timestamp?.toDate().toLocaleDateString([], { 
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}
+          </span>
+        </div>
+      )}
+      
+      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+        <div
+          className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl transition-all duration-200 ${
+            isOwn
+              ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-sm'
+              : `bg-white text-gray-800 border border-gray-200 shadow-sm ${
+                  isUnread ? 'border-l-4 border-l-yellow-400' : ''
+                }`
+          }`}
+        >
+          {/* Show sender name for other user's messages */}
+          {!isOwn && (
+            <p className="text-xs font-semibold text-gray-600 mb-1">{senderName}</p>
+          )}
+          <p className="text-sm break-words leading-relaxed">{m.text}</p>
+          <div
+            className={`flex justify-between items-center mt-2 ${
+              isOwn ? 'text-green-100' : 'text-gray-500'
+            }`}
+          >
+            <span className="text-xs">
+              {formatMessageTime(m.timestamp)}
+              {isUnread && <span className="ml-2 text-yellow-500 animate-pulse" title="Unread">●</span>}
+            </span>
+            {getMessageStatusIcon(m)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+})}
               </div>
             )}
           </div>

@@ -1,7 +1,7 @@
-// lib/firebase.ts - FIXED VERSION
+// lib/firebase.ts - UPDATED WITHOUT PERSISTENCE
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
@@ -29,13 +29,6 @@ const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 
-// Enable offline persistence for Firestore
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(firestore).catch((err) => {
-    console.log('Firebase persistence error:', err);
-  });
-}
-
 // FCM Messaging
 let messaging: ReturnType<typeof getMessaging> | null = null;
 
@@ -50,14 +43,6 @@ const initializeMessaging = async () => {
     }
 
     messaging = getMessaging(app);
-    
-    // Configure FCM
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then((registration) => {
-        console.log('✅ Service Worker ready for FCM');
-      });
-    }
-    
     console.log('✅ FCM Messaging initialized');
     return messaging;
   } catch (error) {

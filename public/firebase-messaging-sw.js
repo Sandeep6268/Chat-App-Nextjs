@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js - SIMPLIFIED VERSION
+// public/firebase-messaging-sw.js - REMOVE ICON REFERENCES
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -21,8 +21,8 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new message',
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-72x72.png',
+    icon: '/favicon.ico', // Use favicon instead
+    badge: '/favicon.ico', // Use favicon instead
     data: payload.data || {},
     tag: payload.data?.chatId || 'chat',
     requireInteraction: false,

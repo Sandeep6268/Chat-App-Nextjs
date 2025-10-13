@@ -1,7 +1,7 @@
 // components/notifications/FCMInitializer.tsx - FIXED VERSION
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getFCMToken, onForegroundMessage } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -10,13 +10,16 @@ import { firestore } from '@/lib/firebase';
 export default function FCMInitializer() {
   const { user } = useAuth();
   const [token, setToken] = useState<string | null>(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     // Initialize service worker
     const initializeServiceWorker = async () => {
       if ('serviceWorker' in navigator) {
         try {
-          // Use simpler registration
           const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
             scope: '/',
           });
@@ -33,13 +36,15 @@ export default function FCMInitializer() {
   }, []);
 
   useEffect(() => {
-    // Get FCM token
+    // Get FCM token only once per user
     const initializeFCM = async () => {
+      if (!user) return;
+
       try {
         const fcmToken = await getFCMToken();
         setToken(fcmToken);
         
-        if (fcmToken && user) {
+        if (fcmToken) {
           // Save token to user document
           const userRef = doc(firestore, 'users', user.uid);
           await updateDoc(userRef, {
@@ -54,10 +59,10 @@ export default function FCMInitializer() {
     };
 
     initializeFCM();
-  }, [user]);
+  }, [user?.uid]); // Only depend on user.uid
 
   useEffect(() => {
-    // Handle foreground messages
+    // Handle foreground messages - only setup once
     const unsubscribe = onForegroundMessage((payload) => {
       console.log('📱 Received foreground message:', payload);
       
@@ -67,19 +72,14 @@ export default function FCMInitializer() {
         
         new Notification(title || 'New Message', {
           body: body || 'You have a new message',
-          icon: '/icons/icon-192x192.png',
-          badge: '/icons/icon-72x72.png',
+          icon: '/favicon.ico', // Use favicon
           tag: payload.data?.chatId,
         });
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, []); // Empty dependency array - setup once
 
-  return (
-    <div style={{ display: 'none' }}>
-      FCM Status: {token ? '✅ Ready' : '❌ Not Ready'}
-    </div>
-  );
+  return null; // No need to render anything
 }

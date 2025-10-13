@@ -204,29 +204,41 @@ useEffect(() => {
 }, [user, currentChatId]);
 
   // Get other user's info from chat
-  const getOtherUserInfo = (chat: Chat) => {
-    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    
-    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
-    
-    if (otherParticipants.length === 0) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+ // In ChatSidebar.tsx - IMPROVE getOtherUserInfo
+const getOtherUserInfo = (chat: Chat) => {
+  if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+  
+  const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
+  
+  if (otherParticipants.length === 0) {
+    return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+  }
+  
+  const otherUserId = otherParticipants[0];
+  const otherUser = availableUsers.find(u => u.uid === otherUserId);
+  
+  console.log('🔍 Finding user info:', { otherUserId, otherUser, availableUsers });
+  
+  if (!otherUser) {
+    // Try to get from chat participantData if available
+    if (chat.participantData && chat.participantData[otherUserId]) {
+      return {
+        name: chat.participantData[otherUserId].displayName || 'Unknown User',
+        email: '',
+        photoURL: chat.participantData[otherUserId].photoURL,
+        uid: otherUserId
+      };
     }
-    
-    const otherUserId = otherParticipants[0];
-    const otherUser = availableUsers.find(u => u.uid === otherUserId);
-    
-    if (!otherUser) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
-    }
-    
-    return {
-      name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
-      email: otherUser.email || '',
-      photoURL: otherUser.photoURL,
-      uid: otherUser.uid
-    };
+    return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
+  }
+  
+  return {
+    name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
+    email: otherUser.email || '',
+    photoURL: otherUser.photoURL,
+    uid: otherUser.uid
   };
+};
   // ... (REST OF THE CHATSIDEBAR CODE REMAINS THE SAME - only notification part updated)
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {
