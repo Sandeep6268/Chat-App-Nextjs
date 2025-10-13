@@ -15,7 +15,7 @@ const messaging = firebase.messaging();
 
 // Background messages handle karo
 messaging.onBackgroundMessage((payload) => {
-  console.log('📩 Received background message:', payload);
+  console.log('📩 Push notification received:', payload);
   
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
