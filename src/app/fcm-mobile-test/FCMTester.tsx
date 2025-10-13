@@ -83,47 +83,86 @@ export default function FCMTester() {
     }
   };
 
-  const sendTestNotification = async (): Promise<void> => {
-    if (!token) {
-      addTestResult('error', '❌ No FCM token available. Please generate token first.');
+  // In FCMTester.tsx - sendTestNotification function को replace करें
+const sendTestNotification = async (): Promise<void> => {
+  if (!token) {
+    addTestResult('error', '❌ No FCM token available. Please generate token first.');
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+    addTestResult('info', 'Sending test notification...');
+
+    const payload = {
+      token: token,
+      title: customTitle,
+      body: customBody,
+      data: {
+        testType: 'mobile-test',
+        timestamp: new Date().toISOString(),
+        url: window.location.href
+      }
+    };
+
+    console.log('📤 Sending payload:', payload);
+
+    const response = await fetch('/api/fcm-mobile-test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('📩 Response status:', response.status);
+    console.log('📩 Response ok:', response.ok);
+
+    // Check if response is OK before parsing JSON
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Server error:', errorText);
+      addTestResult('error', `❌ Server error: ${response.status} ${errorText}`);
       return;
     }
 
+    // Try to parse JSON
+    let result;
     try {
-      setIsLoading(true);
-      addTestResult('info', 'Sending test notification...');
-
-      const response = await fetch('/api/fcm-mobile-test/route', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token: token,
-          title: customTitle,
-          body: customBody,
-          data: {
-            testType: 'mobile-test',
-            timestamp: new Date().toISOString(),
-            url: window.location.href
-          }
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        addTestResult('success', '✅ Test notification sent successfully!');
-        addTestResult('info', '💡 Tip: Minimize browser or open another tab to see push notification');
-      } else {
-        addTestResult('error', `❌ Failed to send: ${result.error}`);
+      const text = await response.text();
+      console.log('📩 Raw response:', text);
+      
+      if (!text) {
+        throw new Error('Empty response from server');
       }
-    } catch (error) {
-      addTestResult('error', `❌ Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
+      
+      result = JSON.parse(text);
+    } catch (parseError) {
+      console.error('❌ JSON parse error:', parseError);
+      addTestResult('error', '❌ Invalid response from server');
+      return;
     }
-  };
+
+    console.log('📩 Parsed result:', result);
+
+    if (result.success) {
+      addTestResult('success', '✅ Test notification sent successfully!');
+      addTestResult('info', '💡 Tip: Minimize browser or open another tab to see push notification');
+      
+      // Auto-test: Check if notification appears
+      setTimeout(() => {
+        addTestResult('info', '🔔 Check your notifications! Did you receive the push notification?');
+      }, 2000);
+    } else {
+      addTestResult('error', `❌ Failed to send: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('❌ Network error:', error);
+    addTestResult('error', `❌ Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const copyTokenToClipboard = (): void => {
     navigator.clipboard.writeText(token);

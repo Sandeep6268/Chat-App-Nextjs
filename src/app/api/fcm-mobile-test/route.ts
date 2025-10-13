@@ -1,3 +1,4 @@
+// app/api/fcm-mobile-test/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 interface NotificationRequest {
@@ -7,20 +8,17 @@ interface NotificationRequest {
   data?: Record<string, string>;
 }
 
-interface FCMResponse {
-  success: boolean;
-  message?: string;
-  messageId?: string;
-  error?: string;
-}
-
-export async function POST(request: NextRequest): Promise<NextResponse<FCMResponse>> {
+export async function POST(request: NextRequest) {
   try {
     const { token, title, body, data }: NotificationRequest = await request.json();
 
+    // Validation
     if (!token) {
       return NextResponse.json(
-        { success: false, error: 'Token is required' },
+        { 
+          success: false, 
+          error: 'Token is required' 
+        },
         { status: 400 }
       );
     }
@@ -28,7 +26,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<FCMRespon
     if (!process.env.FIREBASE_SERVER_KEY) {
       console.error('❌ FIREBASE_SERVER_KEY is missing');
       return NextResponse.json(
-        { success: false, error: 'Server configuration error' },
+        { 
+          success: false, 
+          error: 'Server configuration error' 
+        },
         { status: 500 }
       );
     }
@@ -38,30 +39,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<FCMRespon
       notification: {
         title: title || '📱 Mobile Test Notification',
         body: body || 'This is a test from FCM Mobile Tester',
-        icon: '/icon.png',
-        click_action: window.location.origin
+        icon: '/icon.png'
       },
       data: {
         ...data,
         type: 'mobile-test',
-        url: window.location.origin
+        url: typeof window !== 'undefined' ? window.location.origin : 'https://chat-app-nextjs-gray-eta.vercel.app'
       },
       content_available: true,
       priority: 'high' as const,
       webpush: {
         headers: {
           Urgency: 'high'
-        },
-        notification: {
-          icon: '/icon.png',
-          badge: '/badge.png'
         }
       }
     };
 
-    console.log('📤 Sending mobile test notification to:', token.substring(0, 20) + '...');
+    console.log('📤 Sending FCM message to:', token.substring(0, 20) + '...');
 
-    const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+    const fcmResponse = await fetch('https://fcm.googleapis.com/fcm/send', {
       method: 'POST',
       headers: {
         'Authorization': `key=${process.env.FIREBASE_SERVER_KEY}`,
@@ -70,26 +66,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<FCMRespon
       body: JSON.stringify(message),
     });
 
-    const result = await response.json();
+    const fcmResult = await fcmResponse.json();
 
-    console.log('📩 FCM Mobile Test Response:', result);
+    console.log('📩 FCM Response:', fcmResult);
 
-    if (result.success === 1) {
+    // FCM response handling
+    if (fcmResult.success === 1 || fcmResult.message_id) {
       return NextResponse.json({
         success: true,
-        message: 'Mobile test notification sent successfully',
-        messageId: result.results?.[0]?.message_id
+        message: 'Notification sent successfully',
+        messageId: fcmResult.message_id || fcmResult.results?.[0]?.message_id
       });
     } else {
-      const errorMessage = result.results?.[0]?.error || 'Unknown FCM error';
+      const errorMessage = fcmResult.results?.[0]?.error || fcmResult.error || 'Unknown FCM error';
       return NextResponse.json(
-        { success: false, error: errorMessage },
+        { 
+          success: false, 
+          error: errorMessage 
+        },
         { status: 400 }
       );
     }
 
   } catch (error) {
-    console.error('❌ Mobile test error:', error);
+    console.error('❌ FCM API error:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -98,4 +98,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<FCMRespon
       { status: 500 }
     );
   }
+}
+
+// Add OPTIONS for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }
