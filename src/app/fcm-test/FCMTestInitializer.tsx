@@ -51,25 +51,7 @@ export default function FCMTestInitializer() {
           <p>Body: {notification.body}</p>
         </div>
       )}
-      <button
-  className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
-  onClick={async () => {
-    if (!token) return alert("Token not ready");
-
-    const res = await fetch("/fcm-test/route", { method: "POST", ... });
-if (!res.ok) {
-  console.error("Server error", await res.text());
-  return;
-}
-const data = await res.json();
-console.log(data);
-
-    console.log("Notification send response:", data);
-  }}
->
-  Send Test Notification
-</button>
-
+      
     </div>
   );
 }
