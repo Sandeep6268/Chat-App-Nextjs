@@ -1,5 +1,5 @@
 // fcm-test/page.tsx
-import FCMTestInitializer from "./FCMTestInitializer";
+import FCMTestInitializer from "@/fcm-test/FCMTestInitializer";
 
 export default function FCMTestPage() {
   return (
