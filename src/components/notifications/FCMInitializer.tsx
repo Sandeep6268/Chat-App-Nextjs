@@ -1,4 +1,3 @@
-// components/notifications/FCMInitializer.tsx
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -15,51 +14,39 @@ export default function FCMInitializer() {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
-    // Initialize service worker
-    const initializeServiceWorker = async () => {
+    if (typeof window === 'undefined') return;
+
+    (async () => {
       if ('serviceWorker' in navigator) {
         try {
-          const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-            scope: '/',
-          });
+          const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
           console.log('✅ Service Worker registered:', registration);
         } catch (error) {
           console.error('❌ Service Worker registration failed:', error);
         }
-      } else {
-        console.log('❌ Service Worker not supported');
       }
-    };
-
-    initializeServiceWorker();
+    })();
   }, []);
 
   useEffect(() => {
-    // Get FCM token only once per user
-    const initializeFCM = async () => {
-      if (!user) return;
+    if (!user) return;
 
+    (async () => {
       try {
         const fcmToken = await getFCMToken();
-        
         if (fcmToken) {
-          // Save token to user document
           const userRef = doc(firestore, 'users', user.uid);
           await updateDoc(userRef, {
-            fcmToken: fcmToken,
-            fcmTokenUpdatedAt: new Date()
+            fcmToken,
+            fcmTokenUpdatedAt: new Date(),
           });
-          console.log('✅ FCM token saved for user:', user.uid);
+          console.log('✅ Saved FCM token:', fcmToken);
         }
-      } catch (error) {
-        console.error('❌ Error in FCM initialization:', error);
+      } catch (err) {
+        console.error('❌ Error saving FCM token:', err);
       }
-    };
-
-    initializeFCM();
+    })();
   }, [user?.uid]);
-
-
 
   return null;
 }

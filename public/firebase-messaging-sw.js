@@ -1,8 +1,7 @@
-// public/firebase-messaging-sw.js
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+/* eslint-disable no-undef */
+importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
 
-// Initialize Firebase App in Service Worker
 firebase.initializeApp({
   apiKey: "AIzaSyDbm_Omf6O5OVoWulA6KaJjyDBr5V2Vy6A",
   authDomain: "chat-app-testing-234fc.firebaseapp.com",
@@ -14,53 +13,20 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background message handler
+// Handle background notifications
 messaging.onBackgroundMessage((payload) => {
-  console.log('📱 Received background message in SW:', payload);
-
-  const notificationTitle = payload.notification?.title || 'New Message';
+  console.log("📩 Received background message:", payload);
+  const notificationTitle = payload.notification?.title || "New message";
   const notificationOptions = {
-    body: payload.notification?.body || 'You have a new message',
-    icon: '/favicon.ico',
-    badge: '/favicon.ico',
-    data: payload.data || {},
-    tag: payload.data?.chatId || 'chat',
-    requireInteraction: true,
-    actions: [
-      {
-        action: 'open',
-        title: 'Open Chat'
-      }
-    ]
+    body: payload.notification?.body || "Tap to open chat",
+    icon: "/icon.png",
+    data: payload.data,
   };
-
-  // Show notification
-  return self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Notification click handler
-self.addEventListener('notificationclick', (event) => {
-  console.log('🔔 Notification clicked:', event.notification.data);
-  
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-
-  const chatId = event.notification.data?.chatId;
-  const baseUrl = self.location.origin;
-  const urlToOpen = chatId ? `${baseUrl}/chat/${chatId}` : `${baseUrl}/chat`;
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((windowClients) => {
-      // Check if chat window is already open
-      for (const client of windowClients) {
-        if (client.url.includes('/chat') && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      
-      // Open new window
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
-  );
+  const url = event.notification?.data?.click_action || "/";
+  event.waitUntil(clients.openWindow(url));
 });

@@ -1,93 +1,58 @@
-// app/api/send-notification/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+// path: src/app/api/send-notification/route.ts
+import admin from "firebase-admin";
+import { NextResponse } from "next/server";
 
-// Firebase Admin setup
-let admin: any;
-
-try {
-  admin = require('firebase-admin');
-} catch (error) {
-  console.log('Firebase Admin not available in browser');
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    }),
+  });
 }
 
-// Initialize Firebase Admin only on server
-if (admin && !admin.apps.length) {
+export async function POST(req: Request) {
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    });
-    console.log('✅ Firebase Admin initialized');
-  } catch (error) {
-    console.error('❌ Firebase Admin initialization failed:', error);
-  }
-}
+    const body = await req.json();
 
-export async function POST(request: NextRequest) {
-  try {
-    const { token, notification, data } = await request.json();
-
-    console.log('📤 Sending notification to:', token?.substring(0, 20) + '...');
-
-    if (!token) {
-      return NextResponse.json(
-        { error: 'FCM token is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!admin) {
-      return NextResponse.json(
-        { error: 'Firebase Admin not available' },
-        { status: 500 }
-      );
+    if (!body.token) {
+      return NextResponse.json({ success: false, error: "No FCM token found" }, { status: 400 });
     }
 
     const message = {
-      token: token,
+      token: body.token,
       notification: {
-        title: notification?.title || 'New Message',
-        body: notification?.body || 'You have a new message',
-      },
-      data: {
-        chatId: data?.chatId || '',
-        senderName: data?.senderName || 'Unknown',
-        message: data?.message || '',
-        click_action: `${process.env.NEXT_PUBLIC_APP_URL}/chat/${data?.chatId}`
+        title: body.notification.title.substring(0, 100),
+        body: body.notification.body.substring(0, 200),
       },
       webpush: {
         fcm_options: {
-          link: `${process.env.NEXT_PUBLIC_APP_URL}/chat/${data?.chatId}`
+          link: body.data?.click_action || process.env.NEXT_PUBLIC_APP_URL,
+        },
+        headers: {
+          Urgency: "high",
         },
         notification: {
-          icon: '/favicon.ico',
-          badge: '/favicon.ico'
-        }
-      }
+          title: body.notification.title,
+          body: body.notification.body,
+          icon: "/icon.png",
+          data: body.data,
+        },
+      },
+      data: {
+        chatId: body.data?.chatId || "",
+        senderName: body.data?.senderName || "",
+        message: body.data?.message || "",
+      },
     };
 
-    console.log('📨 Sending FCM message to:', token.substring(0, 20) + '...');
-
     const response = await admin.messaging().send(message);
-    
-    console.log('✅ FCM notification sent successfully');
-
-    return NextResponse.json({ 
-      success: true, 
-      messageId: response 
-    });
-
+    return NextResponse.json({ success: true, messageId: response });
   } catch (error: any) {
-    console.error('❌ Error sending notification:', error);
-    
+    console.error("❌ Send Notification Error:", error);
     return NextResponse.json(
-      { 
-        error: 'Failed to send notification',
-        details: error.message
-      },
+      { success: false, error: error.message || "Internal Server Error" },
       { status: 500 }
     );
   }
