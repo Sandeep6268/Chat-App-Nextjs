@@ -1,11 +1,27 @@
 // app/api/send-notification/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// Firebase Admin setup
-let admin: any;
+// Firebase Admin setup with proper types
+interface FirebaseAdmin {
+  apps: any[];
+  initializeApp: (config: any) => void;
+  messaging: () => {
+    send: (message: any) => Promise<string>;
+  };
+  credential: {
+    cert: (cert: {
+      projectId: string;
+      clientEmail: string;
+      privateKey: string;
+    }) => any;
+  };
+}
+
+let admin: FirebaseAdmin | null = null;
 
 try {
-  admin = require('firebase-admin');
+  // Use dynamic import to avoid require
+  admin = await import('firebase-admin').then(mod => mod.default);
 } catch (error) {
   console.log('Firebase Admin not available in browser');
 }
@@ -15,14 +31,14 @@ if (admin && !admin.apps.length) {
   try {
     admin.initializeApp({
       credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        projectId: process.env.FIREBASE_PROJECT_ID!,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')!,
       }),
     });
     console.log('✅ Firebase Admin initialized');
-  } catch (error) {
-    console.error('❌ Firebase Admin initialization failed:', error);
+  } catch (err) {
+    console.error('❌ Firebase Admin initialization failed:', err);
   }
 }
 
@@ -81,7 +97,6 @@ export async function POST(request: NextRequest) {
 
     console.log('📨 Sending FCM message...');
 
-    // Send message using Firebase Admin with better error handling
     const response = await admin.messaging().send(message);
     
     console.log('✅ FCM notification sent successfully, message ID:', response);
@@ -91,23 +106,26 @@ export async function POST(request: NextRequest) {
       messageId: response 
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error sending notification:', error);
     
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorCode = (error as { code?: string }).code;
+    
     // More specific error logging
-    if (error.code === 'messaging/registration-token-not-registered') {
+    if (errorCode === 'messaging/registration-token-not-registered') {
       console.error('🔴 FCM token no longer valid - user needs to refresh token');
-    } else if (error.code === 'messaging/invalid-argument') {
+    } else if (errorCode === 'messaging/invalid-argument') {
       console.error('🔴 Invalid FCM token format');
-    } else if (error.code === 'messaging/internal-error') {
+    } else if (errorCode === 'messaging/internal-error') {
       console.error('🔴 Internal FCM server error');
     }
     
     return NextResponse.json(
       { 
         error: 'Failed to send notification',
-        details: error.message,
-        code: error.code
+        details: errorMessage,
+        code: errorCode
       },
       { status: 500 }
     );

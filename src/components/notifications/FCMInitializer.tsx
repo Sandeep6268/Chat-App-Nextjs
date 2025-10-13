@@ -50,37 +50,38 @@ export default function FCMInitializer() {
     }
   }, []);
 
-  useEffect(() => {
-    // Get FCM token only once per user
-    const initializeFCM = async () => {
-      if (!user) return;
+ // components/notifications/FCMInitializer.tsx - Fix useEffect
+useEffect(() => {
+  // Get FCM token only once per user
+  const initializeFCM = async () => {
+    if (!user) return;
 
-      try {
-        console.log('🔄 Initializing FCM for user:', user.uid);
-        
-        // Wait a bit for service worker to be ready
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const fcmToken = await getFCMToken();
-        
-        if (fcmToken) {
-          // Save token to user document
-          const userRef = doc(firestore, 'users', user.uid);
-          await updateDoc(userRef, {
-            fcmToken: fcmToken,
-            fcmTokenUpdatedAt: new Date()
-          });
-          console.log('✅ FCM token saved for user:', user.uid);
-        } else {
-          console.log('❌ No FCM token obtained');
-        }
-      } catch (error) {
-        console.error('❌ Error in FCM initialization:', error);
+    try {
+      console.log('🔄 Initializing FCM for user:', user.uid);
+      
+      // Wait a bit for service worker to be ready
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const fcmToken = await getFCMToken();
+      
+      if (fcmToken) {
+        // Save token to user document
+        const userRef = doc(firestore, 'users', user.uid);
+        await updateDoc(userRef, {
+          fcmToken: fcmToken,
+          fcmTokenUpdatedAt: new Date()
+        });
+        console.log('✅ FCM token saved for user:', user.uid);
+      } else {
+        console.log('❌ No FCM token obtained');
       }
-    };
+    } catch (error) {
+      console.error('❌ Error in FCM initialization:', error);
+    }
+  };
 
-    initializeFCM();
-  }, [user?.uid]);
+  initializeFCM();
+}, [user, user?.uid]); // Added user to dependencies
 
   return null;
 }

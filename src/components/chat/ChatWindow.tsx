@@ -34,45 +34,45 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   // Messages listener
   useEffect(() => {
-    if (!chatId || !user) return;
+  if (!chatId || !user) return;
 
-    console.log('🔍 Setting up messages listener for chat:', chatId);
+  console.log('🔍 Setting up messages listener for chat:', chatId);
 
-    const unsubscribe = getMessages(chatId, (msgs) => {
-      console.log('💬 Messages updated:', msgs.length);
+  const unsubscribe = getMessages(chatId, (msgs) => {
+    console.log('💬 Messages updated:', msgs.length);
+    
+    setMessages(msgs);
+    previousMessagesRef.current = msgs;
+
+    // Mark messages as read when chat is active
+    if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
+      const unreadMessages = msgs.filter(
+        (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+      );
       
-      setMessages(msgs);
-      previousMessagesRef.current = msgs;
-
-      // Mark messages as read when chat is active
-      if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
-        const unreadMessages = msgs.filter(
-          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
-        );
-        
-        if (unreadMessages.length > 0) {
-          console.log('📖 Marking messages as read for active chat');
-          markAllMessagesAsRead(chatId, user.uid)
-            .then(() => {
-              console.log('✅ Messages marked as read');
-              setHasMarkedInitialRead(true);
-            })
-            .catch((error) => {
-              console.error('❌ Error marking messages as read:', error);
-            });
-        } else {
-          setHasMarkedInitialRead(true);
-        }
+      if (unreadMessages.length > 0) {
+        console.log('📖 Marking messages as read for active chat');
+        markAllMessagesAsRead(chatId, user.uid)
+          .then(() => {
+            console.log('✅ Messages marked as read');
+            setHasMarkedInitialRead(true);
+          })
+          .catch((error) => {
+            console.error('❌ Error marking messages as read:', error);
+          });
+      } else {
+        setHasMarkedInitialRead(true);
       }
-    });
+    }
+  });
 
-    return () => {
-      console.log('🧹 Cleaning up messages listener for chat:', chatId);
-      unsubscribe();
-      setHasMarkedInitialRead(false);
-      previousMessagesRef.current = [];
-    };
-  }, [chatId, user, isActive]);
+  return () => {
+    console.log('🧹 Cleaning up messages listener for chat:', chatId);
+    unsubscribe();
+    setHasMarkedInitialRead(false);
+    previousMessagesRef.current = [];
+  };
+}, [chatId, user, isActive, hasMarkedInitialRead]);
 
   // Send message
   const handleSendMessage = async (e: React.FormEvent) => {

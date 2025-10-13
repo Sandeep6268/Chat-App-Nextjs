@@ -1,5 +1,5 @@
 // lib/notifications.ts
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore'; // Remove updateDoc
 import { firestore } from './firebase';
 
 export interface NotificationPayload {
@@ -33,9 +33,8 @@ export const sendPushNotification = async (userId: string, payload: Notification
 
     console.log('📨 Sending FCM request for token:', fcmToken.substring(0, 20) + '...');
 
-    // Send notification via FCM with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch('/api/send-notification', {
       method: 'POST',
@@ -72,15 +71,16 @@ export const sendPushNotification = async (userId: string, payload: Notification
     }
 
     console.log('✅ Push notification sent successfully to:', userId);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error sending push notification:', error);
     
-    // Log specific error details
-    if (error.name === 'AbortError') {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (errorMessage.includes('AbortError')) {
       console.error('⏰ Notification request timed out');
-    } else if (error.message.includes('404')) {
+    } else if (errorMessage.includes('404')) {
       console.error('🔍 Notification endpoint not found');
-    } else if (error.message.includes('500')) {
+    } else if (errorMessage.includes('500')) {
       console.error('⚡ Server error when sending notification');
     }
   }
