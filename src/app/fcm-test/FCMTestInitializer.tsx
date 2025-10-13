@@ -1,10 +1,9 @@
 'use client';
 import { useEffect, useState } from "react";
-import { messaging, getToken, onMessage } from "./firebase-config";
+import { messaging, getToken } from "./firebase-config";
 
 export default function FCMTestInitializer() {
   const [token, setToken] = useState<string | null>(null);
-  const [notification, setNotification] = useState<any>(null);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -24,15 +23,7 @@ export default function FCMTestInitializer() {
         console.error("❌ FCM error:", err);
       }
     };
-
     registerFCM();
-
-    const unsubscribe = onMessage(messaging, (payload) => {
-      console.log("📩 Foreground Message:", payload);
-      setNotification(payload.notification);
-    });
-
-    return () => unsubscribe();
   }, []);
 
   const sendTestNotification = async () => {
@@ -46,7 +37,7 @@ export default function FCMTestInitializer() {
         body: JSON.stringify({
           token,
           title: "Test Notification 🔔",
-          body: "This is a manual FCM test message.",
+          body: "This is a push notification only test.",
         }),
       });
 
@@ -71,7 +62,7 @@ export default function FCMTestInitializer() {
 
   return (
     <div className="p-4 border rounded-lg bg-gray-900 text-white mt-4 w-full max-w-md">
-      <h2 className="text-lg font-bold mb-2">🔔 FCM Mobile Test</h2>
+      <h2 className="text-lg font-bold mb-2">🔔 FCM Push Test</h2>
 
       <p>Token:</p>
       <textarea
@@ -85,16 +76,8 @@ export default function FCMTestInitializer() {
         disabled={!token || sending}
         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50 mb-4"
       >
-        {sending ? "Sending..." : "Send Test Notification"}
+        {sending ? "Sending..." : "Send Push Notification"}
       </button>
-
-      {notification && (
-        <div className="mt-3 p-2 bg-green-700 rounded">
-          <h3 className="font-semibold">📨 Notification Received:</h3>
-          <p>Title: {notification.title}</p>
-          <p>Body: {notification.body}</p>
-        </div>
-      )}
     </div>
   );
 }
