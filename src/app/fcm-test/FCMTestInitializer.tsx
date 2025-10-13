@@ -7,7 +7,6 @@ export default function FCMTestInitializer() {
   const [notification, setNotification] = useState<any>(null);
   const [sending, setSending] = useState(false);
 
-  // FCM token request
   useEffect(() => {
     const registerFCM = async () => {
       try {
@@ -36,7 +35,6 @@ export default function FCMTestInitializer() {
     return () => unsubscribe();
   }, []);
 
-  // Button click: send test notification
   const sendTestNotification = async () => {
     if (!token) return alert("Token not ready yet!");
     setSending(true);

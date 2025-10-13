@@ -9,7 +9,6 @@ firebase.initializeApp({
   messagingSenderId:"1024725461365",
   appId:"1:1024725461365:web:3381b37b2593781ff38b3c",
 });
-
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
@@ -17,8 +16,6 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    // icon: "/icon-192x192.png",
   };
-
   self.registration.showNotification(notificationTitle, notificationOptions);
 });

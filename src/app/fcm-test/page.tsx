@@ -1,11 +1,10 @@
-// app/fcm-test/page.tsx
 'use client';
 
 import dynamic from "next/dynamic";
 
 const FCMTestInitializer = dynamic(
   () => import("./FCMTestInitializer"),
-  { ssr: false } // 🔹 Prevents server-side execution
+  { ssr: false } // Prevent server-side execution
 );
 
 export default function FCMTestPage() {
