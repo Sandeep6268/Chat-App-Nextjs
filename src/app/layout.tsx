@@ -1,4 +1,4 @@
-// app/layout.tsx - UPDATED VERSION
+// app/layout.tsx - FIXED VERSION
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Chat App',
   description: 'A real-time chat application built with Next.js and Firebase',
-  manifest: '/manifest.json',
+  manifest: '/manifest.json', // This should work now
 };
 
 export default function RootLayout({
@@ -22,6 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* REMOVE Pusher Beams SDK - Conflict kar raha hoga */}
+        {/* <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script> */}
+        
         {/* PWA Meta Tags */}
         <meta name="application-name" content="Chat App" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -30,7 +33,6 @@ export default function RootLayout({
         <meta name="description" content="Real-time chat application" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="msapplication-config" content="/icons/browserconfig.xml" />
         <meta name="msapplication-TileColor" content="#10B981" />
         <meta name="msapplication-tap-highlight" content="no" />
         <meta name="theme-color" content="#10B981" />
@@ -45,6 +47,10 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
         <link rel="shortcut icon" href="/favicon.ico" />
+        
+        {/* Preconnect for Firebase */}
+        <link rel="preconnect" href="https://firestore.googleapis.com" />
+        <link rel="preconnect" href="https://firebasestorage.googleapis.com" />
       </head>
       <body className={inter.className}>
         <AuthProvider>
@@ -57,18 +63,6 @@ export default function RootLayout({
               style: {
                 background: '#363636',
                 color: '#fff',
-                fontSize: '14px',
-              },
-              success: {
-                duration: 4000,
-                style: {
-                  background: '#10B981',
-                  color: '#fff',
-                },
-                iconTheme: {
-                  primary: '#fff',
-                  secondary: '#10B981',
-                },
               },
             }}
           />

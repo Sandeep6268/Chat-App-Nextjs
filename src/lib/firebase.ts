@@ -1,7 +1,7 @@
-// lib/firebase.ts - COMPLETE FCM IMPLEMENTATION
+// lib/firebase.ts - FIXED VERSION
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
@@ -29,7 +29,14 @@ const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 
-// FCM Messaging with better error handling
+// Enable offline persistence for Firestore
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(firestore).catch((err) => {
+    console.log('Firebase persistence error:', err);
+  });
+}
+
+// FCM Messaging
 let messaging: ReturnType<typeof getMessaging> | null = null;
 
 const initializeMessaging = async () => {
@@ -43,6 +50,14 @@ const initializeMessaging = async () => {
     }
 
     messaging = getMessaging(app);
+    
+    // Configure FCM
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((registration) => {
+        console.log('✅ Service Worker ready for FCM');
+      });
+    }
+    
     console.log('✅ FCM Messaging initialized');
     return messaging;
   } catch (error) {
@@ -64,12 +79,14 @@ const getFCMToken = async (): Promise<string | null> => {
   try {
     // Request notification permission
     const permission = await Notification.requestPermission();
+    console.log('📢 Notification permission:', permission);
+    
     if (permission !== 'granted') {
       console.log('❌ Notification permission denied');
       return null;
     }
 
-    // Get FCM token
+    // Get FCM token with VAPID key
     const token = await getToken(messaging, {
       vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
     });
@@ -79,7 +96,7 @@ const getFCMToken = async (): Promise<string | null> => {
       return null;
     }
 
-    console.log('✅ FCM Token obtained:', token.substring(0, 20) + '...');
+    console.log('✅ FCM Token obtained');
     return token;
   } catch (error) {
     console.error('❌ Error getting FCM token:', error);
@@ -94,7 +111,10 @@ const onForegroundMessage = (callback: (payload: any) => void) => {
     return () => {};
   }
 
-  return onMessage(messaging, callback);
+  return onMessage(messaging, (payload) => {
+    console.log('📱 Received foreground message:', payload);
+    callback(payload);
+  });
 };
 
 export { 

@@ -1,9 +1,11 @@
-// app/api/send-notification/route.ts
+// app/api/send-notification/route.ts - SIMPLIFIED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const { token, notification, data } = await request.json();
+
+    console.log('📤 Sending notification request received');
 
     if (!token) {
       return NextResponse.json(
@@ -12,48 +14,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send notification using Firebase Admin SDK (server-side)
+    // Use fetch to send notification (simpler approach)
+    const FCM_URL = 'https://fcm.googleapis.com/fcm/send';
+    
     const message = {
-      token,
+      to: token,
       notification: {
-        title: notification.title,
-        body: notification.body,
-        image: data?.imageUrl,
+        title: notification?.title || 'New Message',
+        body: notification?.body || 'You have a new message',
+        icon: '/icons/icon-192x192.png',
+        click_action: data?.click_action || process.env.NEXT_PUBLIC_APP_URL
       },
-      data: {
-        ...data,
-        click_action: data.click_action || process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com'
-      },
-      webpush: {
-        fcm_options: {
-          link: data.click_action || process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com'
-        },
-        notification: {
-          icon: '/icons/icon-192x192.png',
-          badge: '/icons/icon-72x72.png',
-          requireInteraction: true,
-        }
-      },
-      android: {
-        priority: 'high',
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
-          },
-        },
-      },
+      data: data || {},
     };
 
-    // Use Firebase Admin to send message
-    const admin = await getFirebaseAdmin();
-    const response = await admin.messaging().send(message);
+    const response = await fetch(FCM_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `key=${process.env.NEXT_PUBLIC_FIREBASE_SERVER_KEY || 'YOUR_SERVER_KEY'}`,
+      },
+      body: JSON.stringify(message),
+    });
+
+    if (!response.ok) {
+      throw new Error(`FCM error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ FCM notification sent successfully:', result);
 
     return NextResponse.json({ 
       success: true, 
-      messageId: response 
+      messageId: result 
     });
   } catch (error: any) {
     console.error('❌ Error sending notification:', error);
@@ -62,21 +55,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Firebase Admin initialization
-async function getFirebaseAdmin() {
-  const admin = await import('firebase-admin');
-  
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    });
-  }
-  
-  return admin;
 }
