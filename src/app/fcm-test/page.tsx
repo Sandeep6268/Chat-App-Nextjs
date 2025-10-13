@@ -1,10 +1,9 @@
 'use client';
-
 import dynamic from "next/dynamic";
 
 const FCMTestInitializer = dynamic(
   () => import("./FCMTestInitializer"),
-  { ssr: false } // Prevent server-side execution
+  { ssr: false }
 );
 
 export default function FCMTestPage() {
