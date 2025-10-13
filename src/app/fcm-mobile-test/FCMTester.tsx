@@ -93,7 +93,7 @@ export default function FCMTester() {
       setIsLoading(true);
       addTestResult('info', 'Sending test notification...');
 
-      const response = await fetch('/fcm-mobile-test/route', {
+      const response = await fetch('/api/fcm-mobile-test/route', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
