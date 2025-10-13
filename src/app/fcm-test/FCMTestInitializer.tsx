@@ -51,6 +51,28 @@ export default function FCMTestInitializer() {
           <p>Body: {notification.body}</p>
         </div>
       )}
+      <button
+  className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
+  onClick={async () => {
+    if (!token) return alert("Token not ready");
+
+    const res = await fetch("/fcm-test/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token,
+        title: "Test Notification",
+        body: "This is a FCM test message from your mobile page",
+      }),
+    });
+
+    const data = await res.json();
+    console.log("Notification send response:", data);
+  }}
+>
+  Send Test Notification
+</button>
+
     </div>
   );
 }
