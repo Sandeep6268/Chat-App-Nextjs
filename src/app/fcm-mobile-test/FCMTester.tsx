@@ -84,16 +84,11 @@ export default function FCMTester() {
   };
 
   // In FCMTester.tsx - sendTestNotification function को replace करें
-// FCMTester.tsx mein sendTestNotification function
+// FCMTester.tsx - sendTestNotification function
 const sendTestNotification = async (): Promise<void> => {
-  if (!token) {
-    addTestResult('error', '❌ No FCM token available');
-    return;
-  }
-
   try {
     setIsLoading(true);
-    addTestResult('info', 'Sending test notification...');
+    addTestResult('info', 'Testing API...');
 
     const response = await fetch('/api/fcm-mobile-test', {
       method: 'POST',
@@ -101,26 +96,22 @@ const sendTestNotification = async (): Promise<void> => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        token: token,
-        title: customTitle,
-        body: customBody,
-        data: {
-          testType: 'mobile-test',
-          timestamp: new Date().toISOString()
-        }
+        token: "test-token",
+        title: "Test",
+        body: "Test"
       }),
     });
 
     const result = await response.json();
     
     if (result.success) {
-      addTestResult('success', '✅ Notification sent successfully!');
+      addTestResult('success', '✅ API Working! Test passed');
     } else {
-      addTestResult('error', `❌ Failed: ${result.error}`);
+      addTestResult('error', '❌ API Failed');
     }
 
   } catch (error: any) {
-    addTestResult('error', `❌ Network error: ${error.message}`);
+    addTestResult('error', '❌ Network error');
   } finally {
     setIsLoading(false);
   }
