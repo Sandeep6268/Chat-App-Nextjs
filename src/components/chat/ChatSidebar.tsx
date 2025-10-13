@@ -8,10 +8,8 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
-import { ChatNotificationService } from '@/lib/chat-notification-service';
-import { UniversalNotificationService } from '@/lib/universal-notifications';
-import { DeviceUtils } from '@/lib/device-utils';
 import toast from 'react-hot-toast';
+import { sendPushNotification } from '@/lib/notifications';
 
 interface ChatSidebarProps {
   onSelectChat?: () => void;
@@ -46,74 +44,46 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     pathname 
   });
 
-  // ✅ DEBUG: Pusher notification function
-  const sendUniversalNotification = async (senderName: string, message: string, targetUserId: string, chatId: string) => {
-  try {
-    console.log('🔔 [NOTIFICATION] Sending universal notification:', { 
-      from: senderName,
-      to: targetUserId,
-      chat: chatId,
-      message: message,
-      isMobile: DeviceUtils.isMobile()
-    });
-
-    const result = await UniversalNotificationService.sendNotification(
-      senderName,
-      message,
-      targetUserId,
-      chatId
-    );
-
-    console.log('✅ [NOTIFICATION] Success:', result);
-    return result;
-
-  } catch (error: any) {
-    console.error('❌ [NOTIFICATION] Failed:', error);
-    
-    // Fallback to toast
-    UniversalNotificationService.showToastNotification(senderName, message, chatId);
-    return { success: false, error: error.message };
-  }
-};
+ 
 
   // ✅ DEBUG: Updated useEffect with detailed logging
-  useEffect(() => {
-    console.log('🔄 ChatSidebar useEffect triggered', { user: user?.uid });
+useEffect(() => {
+  console.log('🔄 ChatSidebar useEffect triggered', { user: user?.uid });
 
-    if (!user) {
-      console.log('❌ No user found, skipping setup');
-      return;
-    }
+  if (!user) {
+    console.log('❌ No user found, skipping setup');
+    return;
+  }
 
-    let unsubscribeChats: (() => void) | undefined;
+  let unsubscribeChats: (() => void) | undefined;
 
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        console.log('📥 Starting data fetch...');
-        
-        // Fetch users
-        const usersRef = collection(firestore, 'users');
-        const usersQuery = query(usersRef, where('uid', '!=', user.uid));
-        const usersSnapshot = await getDocs(usersQuery);
-        
-        const allUsers = usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          uid: doc.data().uid || doc.id,
-          email: doc.data().email || null,
-          displayName: doc.data().displayName || null,
-          photoURL: doc.data().photoURL || null,
-          phoneNumber: doc.data().phoneNumber || null,
-          createdAt: doc.data().createdAt,
-          lastSeen: doc.data().lastSeen,
-          isOnline: doc.data().isOnline || false,
-        } as User));
-        
-        setAvailableUsers(allUsers);
-        console.log(`👥 Found ${allUsers.length} other users:`, allUsers.map(u => u.displayName));
-        
-        // Real-time chats listener
-         // Real-time chats listener
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      console.log('📥 Starting data fetch...');
+      
+      // Fetch users
+      const usersRef = collection(firestore, 'users');
+      const usersQuery = query(usersRef, where('uid', '!=', user.uid));
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      const allUsers = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        uid: doc.data().uid || doc.id,
+        email: doc.data().email || null,
+        displayName: doc.data().displayName || null,
+        photoURL: doc.data().photoURL || null,
+        phoneNumber: doc.data().phoneNumber || null,
+        createdAt: doc.data().createdAt,
+        lastSeen: doc.data().lastSeen,
+        isOnline: doc.data().isOnline || false,
+        fcmToken: doc.data().fcmToken || null, // Added FCM token
+      } as User));
+      
+      setAvailableUsers(allUsers);
+      console.log(`👥 Found ${allUsers.length} other users:`, allUsers.map(u => u.displayName));
+      
+      // Real-time chats listener
       unsubscribeChats = getUserChats(user.uid, (chats) => {
         console.log('💬 Chats updated:', chats.length, 'chats found');
         
@@ -145,25 +115,46 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
             // 🚨 FIXED: Send notification for EVERY new unread message
             if (currentUnread > previousUnread) {
               const otherUserInfo = getOtherUserInfo(chat);
-              console.log(`🎯 Chat ${chat.id} has ${currentUnread - previousUnread} new unread messages!`);
+              const newMessagesCount = currentUnread - previousUnread;
+              
+              console.log(`🎯 Chat ${chat.id} has ${newMessagesCount} new unread messages!`);
               
               // 🚨 REMOVED COOLDOWN: Send notification immediately for each new message
               // Get the other user ID (the one who should receive notification)
               const otherUserId = chat.participants?.find(pid => pid !== user.uid);
               
-              if (otherUserId && otherUserInfo) {
-                console.log(`🚀 Sending notification for chat ${chat.id} to user ${otherUserId}`);
-                
+              if (otherUserId && newMessagesCount > 0) {
                 try {
-                  await sendUniversalNotification(
-                    user.displayName || 'Someone',
-                    chat.lastMessage || 'New message',
-                    otherUserId,
-                    chat.id
-                  );
-                  console.log(`✅ Notification sent successfully for chat ${chat.id}`);
+                  // Check if user is not currently viewing this chat
+                  const isUserViewingThisChat = currentChatId === chat.id;
+                  const isWindowFocused = document.hasFocus();
+                  
+                  // Only send notification if:
+                  // 1. User is NOT viewing this specific chat OR
+                  // 2. Window is not focused (minimized or another tab)
+                  if (!isUserViewingThisChat || !isWindowFocused) {
+                    console.log(`📱 Sending push notification to ${otherUserId}`);
+                    
+                    // Import and send push notification
+                    const { sendPushNotification } = await import('@/lib/notifications');
+                    
+                    const notificationPayload = {
+                      title: `New message from ${otherUserInfo.name}`,
+                      body: chat.lastMessage || 'You have a new message',
+                      chatId: chat.id,
+                      senderName: otherUserInfo.name,
+                      message: chat.lastMessage || 'New message'
+                    };
+                    
+                    // Send notification to the user who has unread messages
+                    await sendPushNotification(otherUserId, notificationPayload);
+                    
+                    console.log(`✅ Push notification sent to ${otherUserId}`);
+                  } else {
+                    console.log(`ℹ️ Skipping notification - user is viewing chat ${chat.id}`);
+                  }
                 } catch (error) {
-                  console.error(`❌ Failed to send notification for chat ${chat.id}:`, error);
+                  console.error('❌ Error sending push notification:', error);
                 }
               }
             }
@@ -177,26 +168,26 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         previousChatsRef.current = userChats;
         setTotalUnread(totalUnreadMessages);
         setExistingChats(userChats);
-          
-          console.log('✅ State updated with new chats');
-          
-          // Calculate users without chats
-          const usersWithExistingChats = new Set<string>();
-          userChats.forEach(chat => {
-            chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
-              usersWithExistingChats.add(pid);
-            });
+        
+        console.log('✅ State updated with new chats');
+        
+        // Calculate users without chats
+        const usersWithExistingChats = new Set<string>();
+        userChats.forEach(chat => {
+          chat.participants?.filter(pid => pid !== user.uid).forEach(pid => {
+            usersWithExistingChats.add(pid);
           });
-          
-          const usersWithoutExistingChats = allUsers.filter(user => 
-            !usersWithExistingChats.has(user.uid)
-          );
-          
-          setUsersWithoutChats(usersWithoutExistingChats);
-          console.log(`👥 Users without chats: ${usersWithoutExistingChats.length}`);
         });
         
-      } catch (error) {
+        const usersWithoutExistingChats = allUsers.filter(user => 
+          !usersWithExistingChats.has(user.uid)
+        );
+        
+        setUsersWithoutChats(usersWithoutExistingChats);
+        console.log(`👥 Users without chats: ${usersWithoutExistingChats.length}`);
+      });
+      
+    } catch (error) {
       console.error('❌ Error in fetchData:', error);
     } finally {
       setLoading(false);

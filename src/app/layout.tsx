@@ -1,9 +1,10 @@
-// app/layout.tsx - SERVER COMPONENT (remove 'use client')
+// app/layout.tsx - UPDATED VERSION
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
+import FCMInitializer from '@/components/notifications/FCMInitializer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -13,30 +14,6 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
 };
 
-// Client Component for Service Worker
-function ServiceWorkerRegistration() {
-  if (typeof window === 'undefined') return null;
-  
-  return (
-    <script
-      dangerouslySetInnerHTML={{
-        __html: `
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker
-              .register('/firebase-messaging-sw.js')
-              .then((registration) => {
-                console.log('✅ Service Worker registered:', registration);
-              })
-              .catch((error) => {
-                console.log('❌ Service Worker registration failed:', error);
-              });
-          }
-        `,
-      }}
-    />
-  );
-}
-
 export default function RootLayout({
   children,
 }: {
@@ -45,10 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Pusher Beams SDK */}
-        <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script>
-        
-        {/* Existing meta tags */}
+        {/* PWA Meta Tags */}
         <meta name="application-name" content="Chat App" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -75,6 +49,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <AuthProvider>
           {children}
+          <FCMInitializer />
           <Toaster 
             position="top-right"
             toastOptions={{
@@ -98,9 +73,6 @@ export default function RootLayout({
             }}
           />
         </AuthProvider>
-        
-        {/* Service Worker Registration */}
-        <ServiceWorkerRegistration />
       </body>
     </html>
   );

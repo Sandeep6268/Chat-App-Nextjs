@@ -5,7 +5,6 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { createUserProfile, updateUserPresence } from '@/lib/firestore';
-import { UniversalNotificationService } from '@/lib/universal-notifications';
 
 
 interface AuthContextType {
@@ -44,8 +43,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           //console.log('✅ User profile created successfully');
           console.log('👤 User signed in, initializing FCM...');
     
-    // Initialize FCM for mobile users
-    UniversalNotificationService.initializeFCM(user.uid);
+    
           
           // Set user as online
           await updateUserPresence(user.uid, true);

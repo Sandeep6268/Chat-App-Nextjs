@@ -10,6 +10,8 @@ export interface User {
   createdAt?: Timestamp;
   lastSeen?: Timestamp;
   isOnline?: boolean;
+  fcmToken?: string; // ADD THIS
+  fcmTokenUpdatedAt?: Timestamp; // ADD THIS
 }
 
 export interface Message {

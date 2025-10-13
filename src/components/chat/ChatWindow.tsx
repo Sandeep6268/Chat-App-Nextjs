@@ -6,11 +6,9 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
-import { ChatNotificationService } from '@/lib/chat-notification-service';
 import toast from 'react-hot-toast';
-import { BrowserNotificationService } from '@/lib/browser-notifications';
-import FCMDebug from '@/lib/fcm-debug';
-import FCMTestButton from '../FCMTestButton';
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 interface ChatWindowProps {
   chatId: string;
@@ -26,12 +24,8 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const [loading, setLoading] = useState(false);
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
   const processedMessagesRef = useRef<Set<string>>(new Set());
-useEffect(() => {
-    // Enable FCM debugging
-    FCMDebug.enableDebug();
-    
-    console.log('🔔 FCM Debugging Enabled - All FCM messages will be logged here');
-  }, []);
+  
+
  
   const previousMessagesRef = useRef<Message[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -63,18 +57,8 @@ useEffect(() => {
               
               const isChatActive = isActive && document.hasFocus();
               
-              // 🎯 SHOW BROWSER NOTIFICATION only if chat is NOT active
-              if (!isChatActive) {
-                try {
-                  await BrowserNotificationService.showMessageNotification(
-                    user.displayName || 'Someone',
-                    message.text,
-                    chatId
-                  );
-                } catch (error) {
-                  console.log('Notification failed (user might have blocked)');
-                }
-              }
+              
+              
             }
           }
         });
@@ -129,10 +113,7 @@ useEffect(() => {
     }
   };
 
-  // Test notifications
-  const testNotifications = async () => {
-    await BrowserNotificationService.showTestNotification();
-  };
+ 
   // 🕒 Improved time formatting
   const formatMessageTime = (timestamp: { toDate: () => Date } | null) => {
     if (!timestamp) return '';
@@ -150,6 +131,7 @@ useEffect(() => {
       return '';
     }
   };
+
 
   // ✅ Message status icons
   const getMessageStatusIcon = (m: Message) => {
@@ -219,7 +201,6 @@ useEffect(() => {
           </div>
         </div>
       </div>
-      <FCMTestButton />
       {/* Messages Container */}
       <div className="flex-1 overflow-hidden bg-gradient-to-b from-gray-50 to-white" ref={chatContainerRef}>
         <ScrollToBottom 

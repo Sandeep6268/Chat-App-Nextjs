@@ -1,10 +1,8 @@
-// public/firebase-messaging-sw.js - FCM SERVICE WORKER
+// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
-console.log('🔧 [FCM SW] Service Worker loading...');
-
-// Firebase configuration
+// Initialize Firebase App in Service Worker
 firebase.initializeApp({
   apiKey: "AIzaSyDbm_Omf6O5OVoWulA6KaJjyDBr5V2Vy6A",
   authDomain: "chat-app-testing-234fc.firebaseapp.com",
@@ -16,19 +14,18 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-console.log('✅ [FCM SW] Firebase Messaging initialized');
-
 // Background message handler
 messaging.onBackgroundMessage((payload) => {
-  console.log('📨 [FCM SW] BACKGROUND MESSAGE RECEIVED:', payload);
+  console.log('📱 Received background message:', payload);
 
   const notificationTitle = payload.notification?.title || 'New Message';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new message',
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-72x72.png',
-    data: payload.data || {},
-    tag: payload.data?.chatId || 'general',
+    image: payload.notification?.image,
+    data: payload.data,
+    tag: payload.data?.chatId || 'chat-notification', // Group by chat
     requireInteraction: true,
     actions: [
       {
@@ -36,44 +33,42 @@ messaging.onBackgroundMessage((payload) => {
         title: 'Open Chat'
       },
       {
-        action: 'close',
-        title: 'Close'
+        action: 'dismiss',
+        title: 'Dismiss'
       }
     ]
   };
 
-  console.log('📱 [FCM SW] Showing notification:', notificationTitle);
-  
   // Show notification
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Notification click handler
 self.addEventListener('notificationclick', (event) => {
-  console.log('📍 [FCM SW] Notification clicked:', event.notification);
+  console.log('🔔 Notification clicked:', event.notification.tag);
   
   event.notification.close();
 
   const chatId = event.notification.data?.chatId;
   
-  if (event.action === 'open' && chatId) {
-    const url = `/chat/${chatId}`;
+  if (event.action === 'open' || !event.action) {
+    // Open the chat when notification is clicked
+    const urlToOpen = chatId ? `${self.origin}/chat/${chatId}` : self.origin;
     
     event.waitUntil(
       clients.matchAll({ type: 'window' }).then((windowClients) => {
-        // Check if chat is already open
-        for (let client of windowClients) {
-          if (client.url.includes(url) && 'focus' in client) {
+        // Check if chat window is already open
+        for (const client of windowClients) {
+          if (client.url.includes(`/chat/${chatId}`) && 'focus' in client) {
             return client.focus();
           }
         }
-        // Open new tab
+        
+        // Open new window
         if (clients.openWindow) {
-          return clients.openWindow(url);
+          return clients.openWindow(urlToOpen);
         }
       })
     );
   }
 });
-
-console.log('✅ [FCM SW] Service Worker setup complete');
