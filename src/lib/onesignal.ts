@@ -3,24 +3,39 @@ import OneSignal from 'react-onesignal';
 
 export const initializeOneSignal = async () => {
   try {
+    // Wait for window to be available
+    if (typeof window === 'undefined') return false;
+
     await OneSignal.init({
       appId: "da31d02e-4dc3-414b-b788-b1cb441a7738",
-      allowLocalhostAsSecureOrigin: true,
-      serviceWorkerParam: { scope: '/onesignal/' },
-      serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
       
-      // Optional: Auto prompt for notifications
+      // Service worker configuration
+      serviceWorkerParam: { 
+        scope: '/OneSignalSDK/' 
+      },
+      serviceWorkerPath: 'OneSignalSDKWorker.js',
+      
+      // Prompt configuration
       promptOptions: {
         slidedown: {
           enabled: true,
-          autoPrompt: true,
-          timeDelay: 3,
+          autoPrompt: false, // Manual control
+          timeDelay: 1,
           pageViews: 1,
         }
-      }
+      },
+      
+      // Allow localhost for development
+      allowLocalhostAsSecureOrigin: true,
     });
+
+    console.log('✅ OneSignal initialized successfully');
     
-    console.log('✅ OneSignal initialized');
+    // Set up event listeners
+    OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
+      console.log('Subscription changed:', isSubscribed);
+    });
+
     return true;
   } catch (error) {
     console.error('❌ OneSignal initialization failed:', error);
@@ -28,24 +43,30 @@ export const initializeOneSignal = async () => {
   }
 };
 
-// Get current user ID
 export const getOneSignalUserId = async (): Promise<string | null> => {
   try {
-    const userId = await OneSignal.getUserId();
-    return userId;
+    return await OneSignal.getUserId();
   } catch (error) {
     console.error('Error getting user ID:', error);
     return null;
   }
 };
 
-// Check subscription status
 export const isSubscribed = async (): Promise<boolean> => {
   try {
-    const subscription = await OneSignal.isPushNotificationsEnabled();
-    return subscription;
+    return await OneSignal.isPushNotificationsEnabled();
   } catch (error) {
     console.error('Error checking subscription:', error);
+    return false;
+  }
+};
+
+export const subscribeUser = async (): Promise<boolean> => {
+  try {
+    await OneSignal.registerForPushNotifications();
+    return true;
+  } catch (error) {
+    console.error('Error subscribing user:', error);
     return false;
   }
 };

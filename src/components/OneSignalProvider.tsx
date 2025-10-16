@@ -1,6 +1,6 @@
 // components/OneSignalProvider.tsx
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { initializeOneSignal } from '@/lib/onesignal';
 
 export default function OneSignalProvider({
@@ -8,43 +8,30 @@ export default function OneSignalProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [initialized, setInitialized] = useState(false);
-
   useEffect(() => {
+    // Initialize OneSignal after component mounts
     const init = async () => {
-      const success = await initializeOneSignal();
-      setInitialized(success);
-      
-      if (success) {
-        // Set up notification handlers
+      try {
+        await initializeOneSignal();
+        
+        // Set up notification click handler
         window.OneSignal = window.OneSignal || [];
-        
-        // Handle notification click
-        OneSignal.on('notificationDisplay', (event) => {
-          console.log('Notification displayed:', event);
+        window.OneSignal.push(function() {
+          window.OneSignal.on('notificationClick', function(event) {
+            console.log('Notification clicked:', event);
+            // Handle notification click - navigate to specific chat
+            if (event.data && event.data.url) {
+              window.location.href = event.data.url;
+            }
+          });
         });
-        
-        OneSignal.on('notificationClick', (event) => {
-          console.log('Notification clicked:', event);
-          // Navigate to specific chat when notification clicked
-          if (event.data?.chatId) {
-            window.location.href = `/chat/${event.data.chatId}`;
-          }
-        });
+      } catch (error) {
+        console.error('Failed to initialize OneSignal:', error);
       }
     };
 
     init();
   }, []);
 
-  return (
-    <>
-      {children}
-      {initialized && (
-        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-1 rounded-lg text-sm">
-          🔔 Ready
-        </div>
-      )}
-    </>
-  );
+  return <>{children}</>;
 }

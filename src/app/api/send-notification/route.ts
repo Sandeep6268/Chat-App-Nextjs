@@ -6,58 +6,43 @@ const ONESIGNAL_REST_API_KEY = "26v2tf243ebxee5accglxhhgt";
 
 export async function POST(request: Request) {
   try {
-    const { title, message, userId, data } = await request.json();
+    const { title, message, userId } = await request.json();
 
-    if (!title || !message) {
-      return NextResponse.json(
-        { error: 'Title and message are required' },
-        { status: 400 }
-      );
-    }
-
-    // Prepare notification payload
-    const notificationPayload: any = {
+    const payload: any = {
       app_id: ONESIGNAL_APP_ID,
-      headings: { en: title },
-      contents: { en: message },
-      data: data || {},
-      chrome_web_icon: "https://yourdomain.com/icon.png",
-      chrome_web_badge: "https://yourdomain.com/badge.png",
+      headings: { en: title || "Test Notification" },
+      contents: { en: message || "Test message" },
+      url: "https://your-app.com", // Your app URL
     };
 
-    // Send to specific user or broadcast
+    // Send to specific user or all
     if (userId) {
-      notificationPayload.include_external_user_ids = [userId];
+      payload.include_external_user_ids = [userId];
     } else {
-      notificationPayload.included_segments = ["Subscribed Users"];
+      payload.included_segments = ["All"];
     }
 
-    // Send notification via OneSignal API
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(notificationPayload),
+      body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
+    const data = await response.json();
 
-    if (result.id) {
-      return NextResponse.json({
-        success: true,
-        message: 'Notification sent successfully',
-        notificationId: result.id
-      });
-    } else {
-      return NextResponse.json(
-        { error: result.errors?.join(', ') || 'Failed to send notification' },
-        { status: 500 }
-      );
+    if (data.errors) {
+      return NextResponse.json({ error: data.errors[0] }, { status: 400 });
     }
+
+    return NextResponse.json({ 
+      success: true, 
+      id: data.id 
+    });
+
   } catch (error) {
-    console.error('OneSignal API error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
