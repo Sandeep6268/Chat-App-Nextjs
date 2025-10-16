@@ -1,11 +1,10 @@
 // components/chat/ChatSidebar.tsx
-// components/chat/ChatSidebar.tsx - Updated with notifications
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePathname, useRouter } from 'next/navigation';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
@@ -31,13 +30,16 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const previousChatsRef = useRef<Chat[]>([]);
   const previousTotalUnreadRef = useRef<number>(0);
   const notificationPermissionRef = useRef<boolean>(false);
+  const usersMapRef = useRef<Map<string, User>>(new Map());
+  const chatsUnsubscribeRef = useRef<(() => void) | null>(null);
+  const usersUnsubscribeRef = useRef<(() => void) | null>(null);
 
   const currentChatId = pathname?.split('/chat/')[1];
 
-  // Request notification permission
+  // ✅ FIXED: Request notification permission once
   useEffect(() => {
     const requestNotificationPermission = async () => {
-      if ('Notification' in window) {
+      if ('Notification' in window && Notification.permission === 'default') {
         try {
           const permission = await Notification.requestPermission();
           notificationPermissionRef.current = permission === 'granted';
@@ -45,147 +47,158 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         } catch (error) {
           console.error('Error requesting notification permission:', error);
         }
+      } else if (Notification.permission === 'granted') {
+        notificationPermissionRef.current = true;
       }
     };
 
     requestNotificationPermission();
   }, []);
 
- // Show browser notification - YEH FUNCTION UPDATE KARNA HAI
-const showBrowserNotification = (chat: Chat, otherUserInfo: any, unreadCount: number) => {
-  if (!notificationPermissionRef.current) {
-    console.log('🔕 Notifications not permitted');
-    return;
-  }
+  // ✅ FIXED: Get other user's info from chat
+  const getOtherUserInfo = useCallback((chat: Chat) => {
+    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+    
+    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
+    
+    if (otherParticipants.length === 0) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+    }
+    
+    const otherUserId = otherParticipants[0];
+    const otherUser = usersMapRef.current.get(otherUserId);
+    
+    if (otherUser) {
+      return {
+        name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
+        email: otherUser.email || '',
+        photoURL: otherUser.photoURL,
+        uid: otherUser.uid
+      };
+    }
+    
+    return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
+  }, [user]);
 
-  // Don't show notification if user is on the same chat
-  if (chat.id === currentChatId) {
-    console.log('🔕 Same chat, skipping notification');
-    return;
-  }
+  // ✅ FIXED: Show browser notification
+  const showBrowserNotification = useCallback((chat: Chat, otherUserInfo: any, unreadCount: number) => {
+    if (!notificationPermissionRef.current) return;
 
-  // Don't show notification if app is in focus
-  if (document.hasFocus()) {
-    console.log('🔕 App in focus, skipping notification');
-    return;
-  }
+    if (chat.id === currentChatId) return;
+    if (document.hasFocus()) return;
 
-  const notificationTitle = `💬 New message from ${otherUserInfo.name}`;
-  const notificationBody = chat.lastMessage || 'You have a new message';
+    const notificationTitle = `💬 New message from ${otherUserInfo.name}`;
+    const notificationBody = chat.lastMessage || 'You have a new message';
 
-  try {
-    const notification = new Notification(notificationTitle, {
-      body: notificationBody,
-      icon: otherUserInfo.photoURL || '/default-avatar.png',
-      badge: '/badge.png',
-      tag: chat.id, // Group notifications by chat
-      requireInteraction: true, // Stay until user interacts
-      data: {
-        chatId: chat.id,
-        userId: user?.uid
+    try {
+      const notification = new Notification(notificationTitle, {
+        body: notificationBody,
+        icon: otherUserInfo.photoURL || '/default-avatar.png',
+        tag: chat.id,
+        requireInteraction: true,
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        router.push(`/chat/${chat.id}`);
+        if (onSelectChat) onSelectChat();
+        notification.close();
+      };
+
+      setTimeout(() => notification.close(), 15000);
+    } catch (error) {
+      console.error('Error showing browser notification:', error);
+    }
+  }, [currentChatId, router, onSelectChat]);
+
+  // ✅ FIXED: Check for new unread messages
+  const checkForNewUnreadMessages = useCallback((currentChats: Chat[]) => {
+    if (!user || !previousChatsRef.current.length) return;
+
+    currentChats.forEach(currentChat => {
+      const previousChat = previousChatsRef.current.find(chat => chat.id === currentChat.id);
+      const currentUnread = currentChat.unreadCount || 0;
+      const previousUnread = previousChat?.unreadCount || 0;
+
+      if (currentUnread > previousUnread && currentUnread > 0) {
+        const otherUserInfo = getOtherUserInfo(currentChat);
+        
+        showBrowserNotification(currentChat, otherUserInfo, currentUnread);
+        
+        toast.success(`New message from ${otherUserInfo.name}`, {
+          duration: 4000,
+          position: 'top-right',
+          onClick: () => {
+            router.push(`/chat/${currentChat.id}`);
+            if (onSelectChat) onSelectChat();
+          }
+        });
       }
     });
+  }, [user, getOtherUserInfo, showBrowserNotification, router, onSelectChat]);
 
-    // ✅ YEH IMPORTANT PART HAI - NOTIFICATION CLICK PAR REDIRECT
-    notification.onclick = () => {
-      console.log('🔔 Notification clicked, navigating to chat:', chat.id);
-      window.focus();
-      router.push(`/chat/${chat.id}`);
-      if (onSelectChat) onSelectChat();
-      notification.close();
-    };
-
-    // Auto close after 15 seconds
-    setTimeout(() => {
-      notification.close();
-    }, 15000);
-
-    console.log('🔔 Browser notification shown for chat:', chat.id);
-  } catch (error) {
-    console.error('Error showing browser notification:', error);
-  }
-};
-
-// Check for new unread messages and show notifications - YEH FUNCTION UPDATE KARNA HAI
-const checkForNewUnreadMessages = (currentChats: Chat[], previousChats: Chat[]) => {
-  if (!user || !previousChats.length) {
-    console.log('🔄 First load or no user, skipping notification check');
-    return;
-  }
-
-  console.log('🔍 Checking for new unread messages...');
-  
-  currentChats.forEach(currentChat => {
-    const previousChat = previousChats.find(chat => chat.id === currentChat.id);
-    const currentUnread = currentChat.unreadCount || 0;
-    const previousUnread = previousChat?.unreadCount || 0;
-
-    console.log(`📊 Chat ${currentChat.id}: ${previousUnread} → ${currentUnread} unread`);
-
-    // ✅ YEH CONDITION HAI - JAB UNREAD COUNT BADHEGA TAB HI NOTIFICATION JAYEGI
-    if (currentUnread > previousUnread && currentUnread > 0) {
-      const otherUserInfo = getOtherUserInfo(currentChat);
-      console.log(`🔔 New unread message detected in chat ${currentChat.id} from ${otherUserInfo.name}`);
-      
-      // Show browser notification
-      showBrowserNotification(currentChat, otherUserInfo, currentUnread);
-      
-      // Also show toast notification (optional)
-      toast.success(`New message from ${otherUserInfo.name}`, {
-        duration: 4000,
-        position: 'top-right',
-        onClick: () => {
-          router.push(`/chat/${currentChat.id}`);
-          if (onSelectChat) onSelectChat();
-        }
-      });
-    }
-  });
-};
-
+  // ✅ FIXED: Single data fetch with proper cleanup
   useEffect(() => {
     if (!user) return;
 
-    let unsubscribeChats: (() => void) | undefined;
+    let isSubscribed = true;
 
     const fetchData = async () => {
       try {
         setLoading(true);
+        
+        console.log('🔄 Starting data fetch for user:', user.uid);
         
         // Fetch users
         const usersRef = collection(firestore, 'users');
         const usersQuery = query(usersRef, where('uid', '!=', user.uid));
         const usersSnapshot = await getDocs(usersQuery);
         
-        const allUsers = usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          uid: doc.data().uid || doc.id,
-          email: doc.data().email || null,
-          displayName: doc.data().displayName || null,
-          photoURL: doc.data().photoURL || null,
-          phoneNumber: doc.data().phoneNumber || null,
-          createdAt: doc.data().createdAt,
-          lastSeen: doc.data().lastSeen,
-          isOnline: doc.data().isOnline || false,
-          fcmToken: doc.data().fcmToken || null,
-        } as User));
+        const allUsers = usersSnapshot.docs.map(doc => {
+          const userData = doc.data();
+          return {
+            id: doc.id,
+            uid: userData.uid || doc.id,
+            email: userData.email || null,
+            displayName: userData.displayName || null,
+            photoURL: userData.photoURL || null,
+            phoneNumber: userData.phoneNumber || null,
+            createdAt: userData.createdAt,
+            lastSeen: userData.lastSeen,
+            isOnline: userData.isOnline || false,
+            fcmToken: userData.fcmToken || null,
+          } as User;
+        });
+        
+        if (!isSubscribed) return;
+        
+        console.log('✅ Total users fetched:', allUsers.length);
+        
+        // Store users in Map
+        usersMapRef.current.clear();
+        allUsers.forEach(user => {
+          usersMapRef.current.set(user.uid, user);
+        });
         
         setAvailableUsers(allUsers);
         
-        // Real-time chats listener
-        unsubscribeChats = getUserChats(user.uid, (chats) => {
+        // Set up real-time chats listener
+        if (chatsUnsubscribeRef.current) {
+          chatsUnsubscribeRef.current();
+        }
+
+        chatsUnsubscribeRef.current = getUserChats(user.uid, (chats) => {
+          if (!isSubscribed) return;
+
           const userChats = chats.filter(chat => 
             chat.participants && chat.participants.includes(user.uid)
           );
           
           // Calculate total unread
           const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
-          const previousTotal = previousTotalUnreadRef.current;
           
-          console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
-          
-          // Check for new unread messages and show notifications
-          checkForNewUnreadMessages(userChats, previousChatsRef.current);
+          // Check for new unread messages
+          checkForNewUnreadMessages(userChats);
           
           // Update state
           previousTotalUnreadRef.current = totalUnreadMessages;
@@ -211,43 +224,22 @@ const checkForNewUnreadMessages = (currentChats: Chat[], previousChats: Chat[]) 
       } catch (error) {
         console.error('Error in fetchData:', error);
       } finally {
-        setLoading(false);
+        if (isSubscribed) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
 
     return () => {
-      if (unsubscribeChats) {
-        unsubscribeChats();
+      isSubscribed = false;
+      if (chatsUnsubscribeRef.current) {
+        chatsUnsubscribeRef.current();
+        chatsUnsubscribeRef.current = null;
       }
     };
-  }, [user, currentChatId]);
-
-  // Get other user's info from chat
-  const getOtherUserInfo = (chat: Chat) => {
-    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    
-    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
-    
-    if (otherParticipants.length === 0) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    }
-    
-    const otherUserId = otherParticipants[0];
-    const otherUser = availableUsers.find(u => u.uid === otherUserId);
-    
-    if (!otherUser) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
-    }
-    
-    return {
-      name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
-      email: otherUser.email || '',
-      photoURL: otherUser.photoURL,
-      uid: otherUser.uid
-    };
-  };
+  }, [user, checkForNewUnreadMessages]);
 
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {

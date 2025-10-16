@@ -1,10 +1,10 @@
-// app/chat/[chatId]/page.tsx
+// app/chat/[chatId]/page.tsx - FIXED
 'use client';
 
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { useEffect, useState, useCallback } from 'react';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User } from '@/types';
 import ChatSidebar from '@/components/chat/ChatSidebar';
@@ -14,7 +14,7 @@ import { auth } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 
 export default function SpecificChatPage() {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const chatId = params.chatId as string;
@@ -39,49 +39,100 @@ export default function SpecificChatPage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Fetch chat data and other user info
-  useEffect(() => {
-    const fetchChatData = async () => {
-      if (!chatId || !user) return;
+  // ✅ FIXED: Fetch other user data with real-time updates
+  const fetchOtherUser = useCallback(async (otherUserId: string) => {
+    try {
+      const userRef = doc(firestore, 'users', otherUserId);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        setOtherUser({ 
+          id: userSnap.id, 
+          uid: userSnap.id,
+          email: userData.email || null,
+          displayName: userData.displayName || null,
+          photoURL: userData.photoURL || null,
+          phoneNumber: userData.phoneNumber || null,
+          createdAt: userData.createdAt,
+          lastSeen: userData.lastSeen,
+          isOnline: userData.isOnline || false,
+          fcmToken: userData.fcmToken || null,
+        } as User);
+      } else {
+        console.warn('Other user not found:', otherUserId);
+        setOtherUser(null);
+      }
+    } catch (error) {
+      console.error('Error fetching other user:', error);
+      setOtherUser(null);
+    }
+  }, []);
 
+  // ✅ FIXED: Improved chat data fetching with real-time listener
+  useEffect(() => {
+    if (!chatId || !user) {
+      setChatLoading(false);
+      return;
+    }
+
+    let unsubscribe: (() => void) | undefined;
+
+    const setupChatListener = async () => {
       try {
         setChatLoading(true);
         
-        // Get chat document
+        // Get chat document with real-time listener
         const chatRef = doc(firestore, 'chats', chatId);
-        const chatSnap = await getDoc(chatRef);
         
-        if (!chatSnap.exists()) {
-          console.error('Chat not found');
-          return;
-        }
-
-        const chatData = chatSnap.data();
-        
-        // Find the other participant
-        const otherUserId = chatData.participants.find((pid: string) => pid !== user.uid);
-        if (otherUserId) {
-          const userRef = doc(firestore, 'users', otherUserId);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            setOtherUser({ id: userSnap.id, ...userSnap.data() } as User);
+        unsubscribe = onSnapshot(chatRef, async (chatSnap) => {
+          if (!chatSnap.exists()) {
+            console.error('Chat not found');
+            setChatLoading(false);
+            return;
           }
-        }
+
+          const chatData = chatSnap.data();
+          console.log('🔍 Chat data loaded:', chatData);
+          
+          // Find the other participant
+          const otherUserId = chatData.participants?.find((pid: string) => pid !== user.uid);
+          
+          if (otherUserId) {
+            console.log('👤 Found other user ID:', otherUserId);
+            await fetchOtherUser(otherUserId);
+          } else {
+            console.warn('No other participant found in chat');
+            setOtherUser(null);
+          }
+          
+          setChatLoading(false);
+        }, (error) => {
+          console.error('Error in chat listener:', error);
+          setChatLoading(false);
+        });
+
       } catch (error) {
-        console.error('Error fetching chat data:', error);
-      } finally {
+        console.error('Error setting up chat listener:', error);
         setChatLoading(false);
       }
     };
 
-    fetchChatData();
-  }, [chatId, user]);
+    setupChatListener();
 
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [chatId, user, fetchOtherUser]);
+
+  // Redirect if not authenticated
   useEffect(() => {
-    if (!loading && !user) {
+    if (!authLoading && !user) {
       router.push('/auth/login');
     }
-  }, [user, loading, router]);
+  }, [user, authLoading, router]);
 
   const handleSignOut = async () => {
     try {
@@ -98,14 +149,13 @@ export default function SpecificChatPage() {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  // Close sidebar when chat is selected on mobile
   const handleSelectChat = () => {
     if (isMobile) {
       setIsSidebarOpen(false);
     }
   };
 
-  if (loading || chatLoading) {
+  if (authLoading || chatLoading) {
     return (
       <div className="min-h-screen bg-green-50 flex items-center justify-center">
         <div className="text-center">
@@ -148,6 +198,7 @@ export default function SpecificChatPage() {
       </header>
       
       <main className="container mx-auto h-[calc(100vh-80px)] flex">
+        {/* Sidebar */}
         <div className={`
           w-80 lg:w-96 bg-white border-r border-gray-200
           transition-transform duration-300
@@ -157,8 +208,23 @@ export default function SpecificChatPage() {
           <ChatSidebar onSelectChat={handleSelectChat} />
         </div>
 
+        {/* Chat Window */}
         <div className="flex-1 relative">
-          <ChatWindow chatId={chatId} otherUser={otherUser} />
+          <ChatWindow 
+            chatId={chatId} 
+            otherUser={otherUser} 
+            isActive={true}
+          />
+          
+          {/* Loading state for chat window */}
+          {chatLoading && (
+            <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading messages...</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

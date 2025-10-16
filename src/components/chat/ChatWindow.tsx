@@ -6,7 +6,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getMessages, sendMessage, markAllMessagesAsRead } from '@/lib/firestore';
 import { Message, User } from '@/types';
 import ScrollToBottom from 'react-scroll-to-bottom';
-import Link from "next/link";
 
 interface ChatWindowProps {
   chatId: string;
@@ -22,60 +21,81 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
   const [hasMarkedInitialRead, setHasMarkedInitialRead] = useState(false);
   
   const previousMessagesRef = useRef<Message[]>([]);
+  const messagesListenerRef = useRef<(() => void) | null>(null);
 
-  // Get participant name
-  const getParticipantName = useCallback(() => {
+  // ✅ FIXED: Stable participant name with fallback
+ const getParticipantName = useCallback(() => {
     if (otherUser) {
+      console.log('✅ ChatWindow - OtherUser found:', otherUser.displayName || otherUser.email);
       return otherUser.displayName || otherUser.email?.split('@')[0] || 'User';
     }
-    return 'Unknown User';
-  }, [otherUser]);
+    
+    // If no otherUser but we have a chatId, show a generic name
+    if (chatId) {
+      console.log('⚠️ ChatWindow - No otherUser, using fallback name');
+      return 'Chat Participant';
+    }
+    
+    console.log('❌ ChatWindow - No chat selected');
+    return 'Select a chat';
+  }, [otherUser, chatId]);
 
   const participantName = getParticipantName();
 
-  // Messages listener
+  // ✅ FIXED: Single messages listener setup
   useEffect(() => {
-  if (!chatId || !user) return;
-
-  console.log('🔍 Setting up messages listener for chat:', chatId);
-
-  const unsubscribe = getMessages(chatId, (msgs) => {
-    console.log('💬 Messages updated:', msgs.length);
-    
-    setMessages(msgs);
-    previousMessagesRef.current = msgs;
-
-    // Mark messages as read when chat is active
-    if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
-      const unreadMessages = msgs.filter(
-        (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
-      );
-      
-      if (unreadMessages.length > 0) {
-        console.log('📖 Marking messages as read for active chat');
-        markAllMessagesAsRead(chatId, user.uid)
-          .then(() => {
-            console.log('✅ Messages marked as read');
-            setHasMarkedInitialRead(true);
-          })
-          .catch((error) => {
-            console.error('❌ Error marking messages as read:', error);
-          });
-      } else {
-        setHasMarkedInitialRead(true);
-      }
+    if (!chatId || !user) {
+      console.log('❌ ChatWindow - Missing chatId or user');
+      return;
     }
-  });
 
-  return () => {
-    console.log('🧹 Cleaning up messages listener for chat:', chatId);
-    unsubscribe();
-    setHasMarkedInitialRead(false);
-    previousMessagesRef.current = [];
-  };
-}, [chatId, user, isActive, hasMarkedInitialRead]);
+    // Clean up previous listener
+    if (messagesListenerRef.current) {
+      console.log('🧹 Cleaning up previous messages listener');
+      messagesListenerRef.current();
+    }
 
-  // Send message
+    console.log('🔍 Setting up messages listener for chat:', chatId);
+
+    messagesListenerRef.current = getMessages(chatId, (msgs) => {
+      console.log('📨 Received messages:', msgs.length);
+      
+      setMessages(msgs);
+      previousMessagesRef.current = msgs;
+
+      // Mark messages as read when chat is active
+      if (msgs.length > 0 && !hasMarkedInitialRead && isActive) {
+        const unreadMessages = msgs.filter(
+          (m) => !m.readBy?.includes(user.uid) && m.senderId !== user.uid
+        );
+        
+        if (unreadMessages.length > 0) {
+          console.log('📖 Marking messages as read for active chat');
+          markAllMessagesAsRead(chatId, user.uid)
+            .then(() => {
+              console.log('✅ Messages marked as read');
+              setHasMarkedInitialRead(true);
+            })
+            .catch((error) => {
+              console.error('❌ Error marking messages as read:', error);
+            });
+        } else {
+          setHasMarkedInitialRead(true);
+        }
+      }
+    });
+
+    return () => {
+      console.log('🧹 Cleaning up messages listener for chat:', chatId);
+      if (messagesListenerRef.current) {
+        messagesListenerRef.current();
+        messagesListenerRef.current = null;
+      }
+      setHasMarkedInitialRead(false);
+    };
+  }, [chatId, user, isActive, hasMarkedInitialRead]);
+
+  // ✅ FIXED: Send message with better error handling
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !chatId) return;
@@ -94,7 +114,8 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
       
       setNewMessage('');
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
+      // You might want to show a toast notification here
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,4 @@
-// --- path: /src/app/chat/page.tsx ---
+// app/chat/page.tsx - FIXED
 'use client';
 
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -9,9 +9,6 @@ import ChatWindow from '@/components/chat/ChatWindow';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import toast from 'react-hot-toast';
-
-
-
 
 export default function ChatPage() {
   const { user, loading } = useAuth();
@@ -24,9 +21,8 @@ export default function ChatPage() {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // On mobile, show sidebar by default
       if (mobile) {
-        setIsSidebarOpen(true);
+        setIsSidebarOpen(false);
       }
     };
 
@@ -56,7 +52,6 @@ export default function ChatPage() {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  // Close sidebar when chat is selected on mobile
   const handleSelectChat = () => {
     if (isMobile) {
       setIsSidebarOpen(false);
@@ -122,12 +117,12 @@ export default function ChatPage() {
           <ChatSidebar onSelectChat={handleSelectChat} />
         </div>
 
-        {/* Chat Window */}
+        {/* Chat Window - Empty State */}
         <div className={`
           flex-1
           ${isMobile && isSidebarOpen ? 'hidden' : 'block'}
         `}>
-          <ChatWindow chatId="" otherUser={null} />
+          <ChatWindow chatId="" otherUser={null} isActive={false} />
           
           {/* Back Button for Mobile - Only show when sidebar is closed */}
           {isMobile && !isSidebarOpen && (
