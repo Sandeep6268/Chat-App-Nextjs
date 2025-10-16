@@ -1,29 +1,36 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
-  // Important for OneSignal
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: '/OneSignalSDKWorker.js',
         headers: [
           {
             key: 'Service-Worker-Allowed',
             value: '/'
+          },
+          {
+            key: 'Content-Type',
+            value: 'application/javascript'
           }
-        ]
-      }
+        ],
+      },
+      {
+        source: '/OneSignalSDK.sw.js',
+        headers: [
+          {
+            key: 'Service-Worker-Allowed',
+            value: '/'
+          },
+          {
+            key: 'Content-Type',
+            value: 'application/javascript'
+          }
+        ],
+      },
     ];
-  }
+  },
 }
 
-module.exports = nextConfig;
+module.exports = nextConfig
