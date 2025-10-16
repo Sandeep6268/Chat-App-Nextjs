@@ -1,11 +1,10 @@
-// --- path: /src/app/page.tsx ---
+// src/app/page.tsx
 'use client';
 
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -16,7 +15,6 @@ export default function Home() {
       router.push('/chat');
     }
   }, [user, loading, router]);
-  
 
   if (loading) {
     return (
