@@ -7,36 +7,23 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+  // Important for OneSignal
   async headers() {
     return [
       {
-        source: '/OneSignalSDKWorker.js',
+        source: '/:path*',
         headers: [
           {
             key: 'Service-Worker-Allowed',
             value: '/'
-          },
-          {
-            key: 'Content-Type',
-            value: 'application/javascript'
           }
-        ],
-      },
-      {
-        source: '/OneSignalSDK.sw.js',
-        headers: [
-          {
-            key: 'Service-Worker-Allowed',
-            value: '/'
-          },
-          {
-            key: 'Content-Type',
-            value: 'application/javascript'
-          }
-        ],
-      },
+        ]
+      }
     ];
-  },
+  }
 }
 
-module.exports = nextConfig
+module.exports = nextConfig;
