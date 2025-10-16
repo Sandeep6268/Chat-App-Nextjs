@@ -1,10 +1,11 @@
-// components/chat/ChatSidebar.tsx - Fully Updated with Notifications
+// components/chat/ChatSidebar.tsx
+// components/chat/ChatSidebar.tsx - Updated with notifications
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePathname, useRouter } from 'next/navigation';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { User, Chat } from '@/types';
 import { getUserChats, markAllMessagesAsRead } from '@/lib/firestore';
@@ -30,175 +31,117 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
   const previousChatsRef = useRef<Chat[]>([]);
   const previousTotalUnreadRef = useRef<number>(0);
   const notificationPermissionRef = useRef<boolean>(false);
-  const shownNotificationsRef = useRef<Set<string>>(new Set());
 
   const currentChatId = pathname?.split('/chat/')[1];
 
   // Request notification permission
   useEffect(() => {
     const requestNotificationPermission = async () => {
-      if ('Notification' in window && Notification.permission === 'default') {
+      if ('Notification' in window) {
         try {
           const permission = await Notification.requestPermission();
           notificationPermissionRef.current = permission === 'granted';
           console.log('🔔 Notification permission:', permission);
-          
-          if (permission === 'granted') {
-            toast.success('Notifications enabled!');
-          }
         } catch (error) {
           console.error('Error requesting notification permission:', error);
         }
-      } else if (Notification.permission === 'granted') {
-        notificationPermissionRef.current = true;
       }
     };
 
     requestNotificationPermission();
   }, []);
 
-  // Get other user's info from chat
-  const getOtherUserInfo = useCallback((chat: Chat) => {
-    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    
-    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
-    
-    if (otherParticipants.length === 0) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
-    }
-    
-    const otherUserId = otherParticipants[0];
-    const otherUser = availableUsers.find(u => u.uid === otherUserId);
-    
-    if (!otherUser) {
-      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
-    }
-    
-    return {
-      name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
-      email: otherUser.email || '',
-      photoURL: otherUser.photoURL,
-      uid: otherUser.uid
-    };
-  }, [user, availableUsers]);
+ // Show browser notification - YEH FUNCTION UPDATE KARNA HAI
+const showBrowserNotification = (chat: Chat, otherUserInfo: any, unreadCount: number) => {
+  if (!notificationPermissionRef.current) {
+    console.log('🔕 Notifications not permitted');
+    return;
+  }
 
-  // Show browser notification
-  const showBrowserNotification = useCallback((chat: Chat, otherUserInfo: any, unreadCount: number) => {
-    if (!notificationPermissionRef.current) {
-      console.log('🔕 Notifications not permitted');
-      return;
-    }
+  // Don't show notification if user is on the same chat
+  if (chat.id === currentChatId) {
+    console.log('🔕 Same chat, skipping notification');
+    return;
+  }
 
-    // Don't show notification if user is on the same chat
-    if (chat.id === currentChatId) {
-      console.log('🔕 Same chat, skipping notification');
-      return;
-    }
+  // Don't show notification if app is in focus
+  if (document.hasFocus()) {
+    console.log('🔕 App in focus, skipping notification');
+    return;
+  }
 
-    // Don't show notification if app is in focus
-    if (document.hasFocus()) {
-      console.log('🔕 App in focus, skipping notification');
-      return;
-    }
+  const notificationTitle = `💬 New message from ${otherUserInfo.name}`;
+  const notificationBody = chat.lastMessage || 'You have a new message';
 
-    // Prevent duplicate notifications for the same chat
-    const notificationKey = `${chat.id}-${Date.now()}`;
-    if (shownNotificationsRef.current.has(chat.id)) {
-      console.log('🔕 Duplicate notification prevented for chat:', chat.id);
-      return;
-    }
-
-    shownNotificationsRef.current.add(chat.id);
-
-    const notificationTitle = `💬 New message from ${otherUserInfo.name}`;
-    const notificationBody = chat.lastMessage || 'You have a new message';
-
-    try {
-      const notification = new Notification(notificationTitle, {
-        body: notificationBody,
-        icon: otherUserInfo.photoURL || '/default-avatar.png',
-        badge: '/badge.png',
-        tag: chat.id, // Group notifications by chat
-        requireInteraction: true, // Stay until user interacts
-        data: {
-          chatId: chat.id,
-          userId: user?.uid
-        }
-      });
-
-      notification.onclick = () => {
-        console.log('🔔 Notification clicked, navigating to chat:', chat.id);
-        window.focus();
-        router.push(`/chat/${chat.id}`);
-        if (onSelectChat) onSelectChat();
-        notification.close();
-        
-        // Remove from shown notifications when clicked
-        shownNotificationsRef.current.delete(chat.id);
-      };
-
-      notification.onclose = () => {
-        // Remove from shown notifications after a while
-        setTimeout(() => {
-          shownNotificationsRef.current.delete(chat.id);
-        }, 5000);
-      };
-
-      // Auto close after 15 seconds
-      setTimeout(() => {
-        notification.close();
-        shownNotificationsRef.current.delete(chat.id);
-      }, 15000);
-
-      console.log('🔔 Browser notification shown for chat:', chat.id);
-    } catch (error) {
-      console.error('Error showing browser notification:', error);
-      shownNotificationsRef.current.delete(chat.id);
-    }
-  }, [currentChatId, user, router, onSelectChat]);
-
-  // Check for new unread messages and show notifications
-  const checkForNewUnreadMessages = useCallback((currentChats: Chat[], previousChats: Chat[]) => {
-    if (!user || !previousChats.length) {
-      console.log('🔄 First load or no user, skipping notification check');
-      return;
-    }
-
-    console.log('🔍 Checking for new unread messages...');
-    
-    currentChats.forEach(currentChat => {
-      const previousChat = previousChats.find(chat => chat.id === currentChat.id);
-      const currentUnread = currentChat.unreadCount || 0;
-      const previousUnread = previousChat?.unreadCount || 0;
-
-      console.log(`📊 Chat ${currentChat.id}: ${previousUnread} → ${currentUnread} unread`);
-
-      // If unread count increased and there are new unread messages
-      if (currentUnread > previousUnread && currentUnread > 0) {
-        const otherUserInfo = getOtherUserInfo(currentChat);
-        console.log(`🔔 New unread message detected in chat ${currentChat.id} from ${otherUserInfo.name}`);
-        
-        // Show browser notification
-        showBrowserNotification(currentChat, otherUserInfo, currentUnread);
-        
-        // Also show toast notification (only if browser is focused)
-        if (document.hasFocus()) {
-          toast.success(
-            `💬 New message from ${otherUserInfo.name}`,
-            {
-              duration: 4000,
-              position: 'top-right',
-              icon: '🔔',
-              onClick: () => {
-                router.push(`/chat/${currentChat.id}`);
-                if (onSelectChat) onSelectChat();
-              }
-            }
-          );
-        }
+  try {
+    const notification = new Notification(notificationTitle, {
+      body: notificationBody,
+      icon: otherUserInfo.photoURL || '/default-avatar.png',
+      badge: '/badge.png',
+      tag: chat.id, // Group notifications by chat
+      requireInteraction: true, // Stay until user interacts
+      data: {
+        chatId: chat.id,
+        userId: user?.uid
       }
     });
-  }, [user, getOtherUserInfo, showBrowserNotification, router, onSelectChat]);
+
+    // ✅ YEH IMPORTANT PART HAI - NOTIFICATION CLICK PAR REDIRECT
+    notification.onclick = () => {
+      console.log('🔔 Notification clicked, navigating to chat:', chat.id);
+      window.focus();
+      router.push(`/chat/${chat.id}`);
+      if (onSelectChat) onSelectChat();
+      notification.close();
+    };
+
+    // Auto close after 15 seconds
+    setTimeout(() => {
+      notification.close();
+    }, 15000);
+
+    console.log('🔔 Browser notification shown for chat:', chat.id);
+  } catch (error) {
+    console.error('Error showing browser notification:', error);
+  }
+};
+
+// Check for new unread messages and show notifications - YEH FUNCTION UPDATE KARNA HAI
+const checkForNewUnreadMessages = (currentChats: Chat[], previousChats: Chat[]) => {
+  if (!user || !previousChats.length) {
+    console.log('🔄 First load or no user, skipping notification check');
+    return;
+  }
+
+  console.log('🔍 Checking for new unread messages...');
+  
+  currentChats.forEach(currentChat => {
+    const previousChat = previousChats.find(chat => chat.id === currentChat.id);
+    const currentUnread = currentChat.unreadCount || 0;
+    const previousUnread = previousChat?.unreadCount || 0;
+
+    console.log(`📊 Chat ${currentChat.id}: ${previousUnread} → ${currentUnread} unread`);
+
+    // ✅ YEH CONDITION HAI - JAB UNREAD COUNT BADHEGA TAB HI NOTIFICATION JAYEGI
+    if (currentUnread > previousUnread && currentUnread > 0) {
+      const otherUserInfo = getOtherUserInfo(currentChat);
+      console.log(`🔔 New unread message detected in chat ${currentChat.id} from ${otherUserInfo.name}`);
+      
+      // Show browser notification
+      showBrowserNotification(currentChat, otherUserInfo, currentUnread);
+      
+      // Also show toast notification (optional)
+      toast.success(`New message from ${otherUserInfo.name}`, {
+        duration: 4000,
+        position: 'top-right',
+        onClick: () => {
+          router.push(`/chat/${currentChat.id}`);
+          if (onSelectChat) onSelectChat();
+        }
+      });
+    }
+  });
+};
 
   useEffect(() => {
     if (!user) return;
@@ -208,8 +151,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        console.log('🔄 Fetching users and chats...');
         
         // Fetch users
         const usersRef = collection(firestore, 'users');
@@ -230,7 +171,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         } as User));
         
         setAvailableUsers(allUsers);
-        console.log(`👥 Found ${allUsers.length} users`);
         
         // Real-time chats listener
         unsubscribeChats = getUserChats(user.uid, (chats) => {
@@ -242,7 +182,7 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           const totalUnreadMessages = userChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
           const previousTotal = previousTotalUnreadRef.current;
           
-          console.log(`📊 Total unread count: ${previousTotal} → ${totalUnreadMessages}`);
+          console.log(`📊 Unread count: ${previousTotal} → ${totalUnreadMessages}`);
           
           // Check for new unread messages and show notifications
           checkForNewUnreadMessages(userChats, previousChatsRef.current);
@@ -266,13 +206,10 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
           );
           
           setUsersWithoutChats(usersWithoutExistingChats);
-          
-          console.log(`💬 ${userChats.length} chats, ${usersWithoutExistingChats.length} users available for new chat`);
         });
         
       } catch (error) {
         console.error('Error in fetchData:', error);
-        toast.error('Error loading chats');
       } finally {
         setLoading(false);
       }
@@ -282,11 +219,35 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 
     return () => {
       if (unsubscribeChats) {
-        console.log('🧹 Cleaning up chats listener');
         unsubscribeChats();
       }
     };
-  }, [user, currentChatId, checkForNewUnreadMessages]);
+  }, [user, currentChatId]);
+
+  // Get other user's info from chat
+  const getOtherUserInfo = (chat: Chat) => {
+    if (!user) return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+    
+    const otherParticipants = chat.participants?.filter(pid => pid !== user.uid) || [];
+    
+    if (otherParticipants.length === 0) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: '' };
+    }
+    
+    const otherUserId = otherParticipants[0];
+    const otherUser = availableUsers.find(u => u.uid === otherUserId);
+    
+    if (!otherUser) {
+      return { name: 'Unknown User', email: '', photoURL: null, uid: otherUserId };
+    }
+    
+    return {
+      name: otherUser.displayName || otherUser.email?.split('@')[0] || 'Unknown User',
+      email: otherUser.email || '',
+      photoURL: otherUser.photoURL,
+      uid: otherUser.uid
+    };
+  };
 
   // Filter chats based on search term
   const filteredChats = existingChats.filter(chat => {
@@ -332,7 +293,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
         onSelectChat();
       }
       
-      console.log('✅ New chat created:', chatRef.id);
       router.push(`/chat/${chatRef.id}`);
       
     } catch (error) {
@@ -352,7 +312,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
 
     if (hasUnread && user) {
       try {
-        console.log('📖 Marking messages as read for chat:', chatId);
         await markAllMessagesAsRead(chatId, user.uid);
       } catch (error) {
         console.error('Error marking messages as read:', error);
@@ -394,23 +353,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
     if (!message) return 'Start a conversation...';
     if (message.length <= maxLength) return message;
     return message.substring(0, maxLength) + '...';
-  };
-
-  // Enable notifications button
-  const enableNotifications = async () => {
-    try {
-      const permission = await Notification.requestPermission();
-      notificationPermissionRef.current = permission === 'granted';
-      
-      if (permission === 'granted') {
-        toast.success('Notifications enabled! 🔔');
-      } else if (permission === 'denied') {
-        toast.error('Please enable notifications in browser settings');
-      }
-    } catch (error) {
-      console.error('Error enabling notifications:', error);
-      toast.error('Error enabling notifications');
-    }
   };
 
   // New Chat Modal Component
@@ -583,20 +525,6 @@ export default function ChatSidebar({ onSelectChat }: ChatSidebarProps) {
                   {totalUnread > 99 ? '99+' : totalUnread}
                 </span>
               )}
-              
-              {/* Enable Notifications Button */}
-              {!notificationPermissionRef.current && (
-                <button
-                  onClick={enableNotifications}
-                  className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-                  title="Enable Notifications"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM10.24 8.56a5.97 5.97 0 01-3.78-4.26m8.98 4.26a5.97 5.97 0 00-3.78-4.26m0 0a6 6 0 10-8.44 8.44l8.44-8.44z" />
-                  </svg>
-                </button>
-              )}
-              
               <button
                 onClick={() => setShowNewChatModal(true)}
                 className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"

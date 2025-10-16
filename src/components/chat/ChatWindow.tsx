@@ -159,9 +159,7 @@ export default function ChatWindow({ chatId, otherUser, isActive = true }: ChatW
 
   return (
     <div className="flex-1 flex flex-col bg-white h-full">
-       <Link href="/fcm-test" className="underline text-green-400">
-        Go to FCM Test Page
-      </Link>
+       
       {/* Header */}
       <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-green-200 flex-shrink-0">
         <div className="flex justify-between items-center">

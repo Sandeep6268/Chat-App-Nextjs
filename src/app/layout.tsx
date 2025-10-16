@@ -10,7 +10,6 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Chat App',
   description: 'A real-time chat application built with Next.js and Firebase',
-  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
@@ -29,7 +28,6 @@ export default function RootLayout({
         <meta name="mobile-web-app-status-bar-style" content="default" />
         <meta name="mobile-web-app-title" content="Chat App" />
         <meta name="description" content="Real-time chat application" />
-        <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#10B981" />
         <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>" />
       </head>
