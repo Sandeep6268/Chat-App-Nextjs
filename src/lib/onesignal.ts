@@ -5,42 +5,31 @@ export const initializeOneSignal = async () => {
   try {
     if (typeof window === 'undefined') return false;
 
-    // OneSignal automatic service worker setup
+    // Use CDN service worker directly
     await OneSignal.init({
       appId: "da31d02e-4dc3-414b-b788-b1cb441a7738",
       
-      // Let OneSignal handle service worker automatically
-      allowLocalhostAsSecureOrigin: true,
+      // Service worker configuration
+      serviceWorkerParam: { 
+        scope: "/"
+      },
       
-      // Notification prompt settings
-      promptOptions: {
-        slidedown: {
-          enabled: true,
-          autoPrompt: false, // We'll trigger manually
-        }
-      }
+      // Use CDN service worker
+      serviceWorkerPath: "https://cdn.onesignal.com/sdks/OneSignalSDK.sw.js",
+      
+      allowLocalhostAsSecureOrigin: true,
     });
 
-    console.log('✅ OneSignal initialized');
+    console.log('✅ OneSignal initialized successfully');
+    
+    // Setup event listeners
+    OneSignal.on('subscriptionChange', (isSubscribed: boolean) => {
+      console.log('User subscription changed:', isSubscribed);
+    });
+
     return true;
   } catch (error) {
-    console.error('❌ OneSignal init error:', error);
-    return false;
-  }
-};
-
-export const getOneSignalUserId = async (): Promise<string | null> => {
-  try {
-    return await OneSignal.getUserId();
-  } catch (error) {
-    return null;
-  }
-};
-
-export const isSubscribed = async (): Promise<boolean> => {
-  try {
-    return await OneSignal.isPushNotificationsEnabled();
-  } catch (error) {
+    console.error('❌ OneSignal initialization failed:', error);
     return false;
   }
 };
