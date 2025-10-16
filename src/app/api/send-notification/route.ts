@@ -1,9 +1,26 @@
 // app/api/send-notification/route.ts
 import { NextResponse } from 'next/server';
 
-// Your OneSignal credentials
 const ONESIGNAL_APP_ID = "da31d02e-4dc3-414b-b788-b1cb441a7738";
-const ONESIGNAL_REST_API_KEY = "26v2tf243ebxee5accglxhhgt"; // Your REST API Key
+const ONESIGNAL_REST_API_KEY = "26v2tf243ebxee5accglxhhgt";
+
+// Define proper types
+interface NotificationPayload {
+  app_id: string;
+  headings: { en: string };
+  contents: { en: string };
+  url: string;
+  chrome_web_icon?: string;
+  chrome_web_badge?: string;
+  include_external_user_ids?: string[];
+  included_segments?: string[];
+}
+
+interface OneSignalResponse {
+  id?: string;
+  errors?: string[];
+  recipients?: number;
+}
 
 export async function POST(request: Request) {
   try {
@@ -16,13 +33,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Prepare the notification payload
-    const payload: any = {
+    // Prepare the notification payload with proper typing
+    const payload: NotificationPayload = {
       app_id: ONESIGNAL_APP_ID,
       headings: { en: title },
       contents: { en: message },
-      url: "https://chat-app-nextjs-gray-eta.vercel.app", // Your app URL
-      // Add icons for better appearance
+      url: "https://chat-app-nextjs-gray-eta.vercel.app",
       chrome_web_icon: "https://chat-app-nextjs-gray-eta.vercel.app/icon.png",
       chrome_web_badge: "https://chat-app-nextjs-gray-eta.vercel.app/icon.png",
     };
@@ -34,12 +50,7 @@ export async function POST(request: Request) {
       payload.included_segments = ["Subscribed Users"];
     }
 
-    console.log('Sending OneSignal notification with payload:', {
-      appId: ONESIGNAL_APP_ID,
-      title,
-      message,
-      userId: userId || 'all users'
-    });
+    console.log('Sending OneSignal notification');
 
     // Send to OneSignal API
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
@@ -51,7 +62,7 @@ export async function POST(request: Request) {
       body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
+    const result: OneSignalResponse = await response.json();
 
     console.log('OneSignal API response:', result);
 
@@ -59,7 +70,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           error: result.errors.join(', ') || 'OneSignal API error',
-          details: result
         },
         { status: 400 }
       );
@@ -79,12 +89,13 @@ export async function POST(request: Request) {
       );
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('OneSignal API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { 
         error: 'Internal server error',
-        details: error.message 
+        details: errorMessage 
       },
       { status: 500 }
     );

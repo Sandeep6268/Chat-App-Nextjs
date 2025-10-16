@@ -2,7 +2,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import OneSignal from 'react-onesignal';
-import ServiceWorkerSetup from '@/components/ServiceWorkerSetup';
 
 export default function OneSignalTestPage() {
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -93,8 +92,9 @@ export default function OneSignalTestPage() {
       } else {
         alert(`❌ Failed to send: ${data.error}`);
       }
-    } catch (error: any) {
-      alert(`❌ Request failed: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`❌ Request failed: ${errorMessage}`);
     } finally {
       setSending(false);
     }
@@ -124,8 +124,9 @@ export default function OneSignalTestPage() {
       } else {
         alert(`❌ Failed: ${data.error}`);
       }
-    } catch (error: any) {
-      alert(`❌ Request failed: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`❌ Request failed: ${errorMessage}`);
     } finally {
       setSending(false);
     }
@@ -133,8 +134,6 @@ export default function OneSignalTestPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <ServiceWorkerSetup />
-      
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-md p-6 text-center">
@@ -264,7 +263,7 @@ export default function OneSignalTestPage() {
           <h3 className="font-semibold text-yellow-800 mb-3">Troubleshooting</h3>
           <ul className="text-sm text-yellow-700 space-y-2">
             <li>• Allow notifications when browser prompts</li>
-            <li>• Make sure you're using HTTPS</li>
+            <li>• Make sure you&apos;re using HTTPS</li>
             <li>• Refresh page if initialization fails</li>
             <li>• Check browser console for detailed errors</li>
           </ul>
