@@ -4,7 +4,6 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
 import { Toaster } from 'react-hot-toast';
-import OneSignalProvider from '@/components/OneSignalProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -36,7 +35,6 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          <OneSignalProvider>
 
           {children}
           <Toaster 
@@ -49,7 +47,6 @@ export default function RootLayout({
               },
             }}
           />
-              </OneSignalProvider>
         </AuthProvider>
       </body>
     </html>
